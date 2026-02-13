@@ -2,25 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-// iyzico formunu script'leriyle birlikte render eden bileşen
+// iyzico formunu script'leriyle birlikte render eden bilesen
 function IyzicoForm({ html }) {
     const containerRef = useRef(null);
 
     useEffect(() => {
         if (!containerRef.current || !html) return;
-
-        // HTML'i container'a ekle
         containerRef.current.innerHTML = html;
-
-        // Script tag'lerini bul ve çalıştır
         const scripts = containerRef.current.querySelectorAll('script');
         scripts.forEach((oldScript) => {
             const newScript = document.createElement('script');
-            // Attributeları kopyala
             Array.from(oldScript.attributes).forEach((attr) => {
                 newScript.setAttribute(attr.name, attr.value);
             });
-            // İnline script içeriğini kopyala
             if (oldScript.textContent) {
                 newScript.textContent = oldScript.textContent;
             }
@@ -32,52 +26,35 @@ function IyzicoForm({ html }) {
 }
 
 export default function CheckoutPage() {
-    const [plans, setPlans] = useState([]);
-    const [selectedPlan, setSelectedPlan] = useState(null);
+    const [cartItems, setCartItems] = useState([]);
+    const [cartTotal, setCartTotal] = useState('0');
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [checkoutHtml, setCheckoutHtml] = useState('');
-    const [paymentType, setPaymentType] = useState('subscription');
-    const [productInfo, setProductInfo] = useState({});
     const [formData, setFormData] = useState({
         customerName: '',
         customerEmail: '',
         customerPhone: '',
         customerAddress: '',
         customerCity: '',
-        customerIdentityNumber: '',
     });
 
-    // URL parametrelerini oku ve planlari yukle
+    // URL'deki sepet bilgilerini oku
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const type = params.get('type') || 'subscription';
-        setPaymentType(type);
+        const cartParam = params.get('cart');
 
-        if (type === 'single') {
-            setProductInfo({
-                id: params.get('product_id') || '',
-                name: params.get('product_name') || 'Ürün',
-                price: params.get('product_price') || '',
-                variantId: params.get('variant_id') || '',
-            });
-            setLoading(false);
-        } else {
-            fetchPlans();
+        if (cartParam) {
+            try {
+                const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
+                setCartItems(decoded.items || []);
+                setCartTotal(decoded.total || '0');
+            } catch (e) {
+                console.error('Sepet verisi okunamadi:', e);
+            }
         }
+        setLoading(false);
     }, []);
-
-    async function fetchPlans() {
-        try {
-            const res = await fetch('/api/subscription/create');
-            const data = await res.json();
-            setPlans(data.plans || []);
-        } catch (err) {
-            console.error('Plan yükleme hatası:', err);
-        } finally {
-            setLoading(false);
-        }
-    }
 
     function handleInputChange(e) {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -86,59 +63,47 @@ export default function CheckoutPage() {
     async function handleSubmit(e) {
         e.preventDefault();
 
-        if (paymentType === 'subscription' && !selectedPlan) {
-            alert('Lütfen bir plan seçin');
+        if (cartItems.length === 0) {
+            alert('Sepetiniz boş');
             return;
         }
 
-        if (paymentType === 'single' && !productInfo.price) {
-            alert('Ürün fiyatı bulunamadı');
+        if (!formData.customerName || !formData.customerEmail || !formData.customerPhone || !formData.customerAddress || !formData.customerCity) {
+            alert('Lütfen tüm alanları doldurun');
             return;
         }
 
         setSubmitting(true);
 
         try {
-            const payload = {
-                type: paymentType,
-                ...formData,
-            };
-
-            if (paymentType === 'subscription') {
-                payload.planId = selectedPlan.id;
-            } else {
-                payload.productId = productInfo.id;
-                payload.productName = productInfo.name;
-                payload.productPrice = productInfo.price;
-                payload.variantId = productInfo.variantId;
-            }
-
             const res = await fetch('/api/iyzico/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    type: 'single',
+                    productId: cartItems.map(i => i.id).join(','),
+                    productName: cartItems.map(i => i.name).join(', '),
+                    productPrice: cartTotal,
+                    variantId: cartItems.map(i => i.variant_id).join(','),
+                    cartItems: cartItems,
+                    ...formData,
+                }),
             });
 
-            let data;
             const text = await res.text();
+            let data;
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                console.error('JSON parse error:', e, 'Response text:', text);
-                throw new Error(`Server response (${res.status}): ${text.substring(0, 100)}...`);
+                console.error('JSON parse error:', e);
+                throw new Error(`Sunucu hatası (${res.status})`);
             }
 
             if (data.success && data.checkoutFormContent) {
-                // iyzico checkout formunu göster
                 setCheckoutHtml(data.checkoutFormContent);
             } else {
-                const errorMsg = [
-                    data.error,
-                    data.details && `Detay: ${data.details}`,
-                    data.errorCode && `Kod: ${data.errorCode}`,
-                ].filter(Boolean).join('\n');
-                alert(errorMsg || 'Bir hata oluştu');
-                console.error('iyzico full response:', data);
+                alert(data.error || 'Ödeme başlatılamadı');
+                console.error('iyzico response:', data);
             }
         } catch (err) {
             console.error('Checkout hatası:', err);
@@ -148,45 +113,28 @@ export default function CheckoutPage() {
         }
     }
 
-    function getIntervalText(interval) {
-        switch (interval) {
-            case 'MONTHLY': return '/ay';
-            case 'QUARTERLY': return '/3 ay';
-            case 'YEARLY': return '/yıl';
-            case 'WEEKLY': return '/hafta';
-            default: return '/ay';
-        }
-    }
-
     if (loading) {
         return (
-            <div className="page">
-                <div className="container">
-                    <div className="loading">
-                        <div className="spinner"></div>
-                    </div>
+            <div style={styles.page}>
+                <div style={styles.container}>
+                    <div style={styles.loading}>Yükleniyor...</div>
                 </div>
             </div>
         );
     }
 
-    // iyzico checkout formu gösteriliyorsa
+    // iyzico odeme formu
     if (checkoutHtml) {
         return (
-            <div className="page">
-                <div className="container">
-                    <div className="page-header">
-                        <h1>💳 Ödeme</h1>
-                        <p>Kart bilgilerinizi girerek aboneliğinizi başlatın</p>
-                    </div>
-                    <div style={{ maxWidth: 600, margin: '0 auto' }}>
-                        <div className="card">
-                            <div className="card-header">
-                                <h3>Güvenli Ödeme - iyzico</h3>
-                                <span className="badge badge-active">🔒 SSL</span>
-                            </div>
-                            <IyzicoForm html={checkoutHtml} />
+            <div style={styles.page}>
+                <div style={styles.container}>
+                    <h1 style={styles.title}>💳 Ödeme</h1>
+                    <div style={styles.card}>
+                        <div style={styles.cardHeader}>
+                            <h3>🔒 Güvenli Ödeme - iyzico</h3>
+                            <span style={styles.sslBadge}>🔒 SSL</span>
                         </div>
+                        <IyzicoForm html={checkoutHtml} />
                     </div>
                 </div>
             </div>
@@ -194,150 +142,206 @@ export default function CheckoutPage() {
     }
 
     return (
-        <div className="page">
-            <div className="container">
-                <div className="page-header">
-                    <h1>🔄 Abonelik Başlat</h1>
-                    <p>Size en uygun planı seçin ve hemen başlayın</p>
+        <div style={styles.page}>
+            <div style={styles.container}>
+                <h1 style={styles.title}>💳 Ödeme</h1>
+                <p style={styles.subtitle}>Sipariş bilgilerinizi kontrol edin ve ödemenizi tamamlayın</p>
+
+                {/* SEPET OZETI */}
+                <div style={styles.card}>
+                    <h2 style={styles.cardTitle}>🛒 Sipariş Özeti</h2>
+
+                    {cartItems.length === 0 ? (
+                        <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>
+                            Sepetiniz boş. Lütfen mağazadan ürün ekleyin.
+                        </p>
+                    ) : (
+                        <>
+                            {cartItems.map((item, index) => (
+                                <div key={index} style={styles.cartItem}>
+                                    <div style={styles.cartItemInfo}>
+                                        <div style={styles.cartItemName}>{item.name}</div>
+                                        {item.variant && <div style={styles.cartItemVariant}>{item.variant}</div>}
+                                        <div style={styles.cartItemQty}>Adet: {item.quantity}</div>
+                                    </div>
+                                    <div style={styles.cartItemPrice}>
+                                        {(parseFloat(item.price) * item.quantity).toFixed(2)} ₺
+                                    </div>
+                                </div>
+                            ))}
+                            <div style={styles.totalRow}>
+                                <span style={styles.totalLabel}>Toplam</span>
+                                <span style={styles.totalPrice}>{cartTotal} ₺</span>
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                {/* Plan Seçimi */}
-                {plans.length > 0 ? (
-                    <div className="plans-grid">
-                        {plans.map((plan) => (
-                            <div
-                                key={plan.id}
-                                className={`plan-card ${selectedPlan?.id === plan.id ? 'selected' : ''}`}
-                                onClick={() => setSelectedPlan(plan)}
-                            >
-                                <div className="plan-check"></div>
-                                <div className="plan-name">{plan.name}</div>
-                                {plan.description && (
-                                    <div className="plan-desc">{plan.description}</div>
-                                )}
-                                <div className="plan-price">
-                                    {plan.price.toLocaleString('tr-TR')}₺
-                                    <span>{getIntervalText(plan.interval)}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="card" style={{ textAlign: 'center', padding: 48, marginBottom: 32 }}>
-                        <p style={{ color: 'var(--text-secondary)' }}>
-                            Henüz abonelik planı oluşturulmamış. Lütfen admin panelinden plan ekleyin.
-                        </p>
-                    </div>
-                )}
-
-                {/* Müşteri Bilgileri Formu */}
-                <div style={{ maxWidth: 700, margin: '0 auto' }}>
+                {/* MUSTERI BILGILERI */}
+                {cartItems.length > 0 && (
                     <form onSubmit={handleSubmit}>
-                        <div className="card">
-                            <div className="card-header">
-                                <h3>📋 Bilgileriniz</h3>
+                        <div style={styles.card}>
+                            <h2 style={styles.cardTitle}>👤 Bilgileriniz</h2>
+
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>Ad Soyad</label>
+                                <input style={styles.input} type="text" name="customerName" placeholder="Adınız Soyadınız" value={formData.customerName} onChange={handleInputChange} required />
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Ad Soyad *</label>
-                                    <input
-                                        type="text"
-                                        name="customerName"
-                                        value={formData.customerName}
-                                        onChange={handleInputChange}
-                                        placeholder="Ad Soyad"
-                                        required
-                                    />
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>E-posta</label>
+                                <input style={styles.input} type="email" name="customerEmail" placeholder="ornek@email.com" value={formData.customerEmail} onChange={handleInputChange} required />
+                            </div>
+
+                            <div style={styles.formRow}>
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>Telefon</label>
+                                    <input style={styles.input} type="tel" name="customerPhone" placeholder="+90 5XX XXX XX XX" value={formData.customerPhone} onChange={handleInputChange} required />
                                 </div>
-                                <div className="form-group">
-                                    <label>E-posta *</label>
-                                    <input
-                                        type="email"
-                                        name="customerEmail"
-                                        value={formData.customerEmail}
-                                        onChange={handleInputChange}
-                                        placeholder="ornek@email.com"
-                                        required
-                                    />
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>Şehir</label>
+                                    <input style={styles.input} type="text" name="customerCity" placeholder="İstanbul" value={formData.customerCity} onChange={handleInputChange} required />
                                 </div>
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Telefon</label>
-                                    <input
-                                        type="tel"
-                                        name="customerPhone"
-                                        value={formData.customerPhone}
-                                        onChange={handleInputChange}
-                                        placeholder="+90 5XX XXX XX XX"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>TC Kimlik No</label>
-                                    <input
-                                        type="text"
-                                        name="customerIdentityNumber"
-                                        value={formData.customerIdentityNumber}
-                                        onChange={handleInputChange}
-                                        placeholder="XXXXXXXXXXX"
-                                        maxLength={11}
-                                    />
-                                </div>
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>Adres</label>
+                                <input style={styles.input} type="text" name="customerAddress" placeholder="Açık adresiniz" value={formData.customerAddress} onChange={handleInputChange} required />
                             </div>
 
-                            <div className="form-group">
-                                <label>Adres</label>
-                                <input
-                                    type="text"
-                                    name="customerAddress"
-                                    value={formData.customerAddress}
-                                    onChange={handleInputChange}
-                                    placeholder="Mahalle, Sokak, No"
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label>Şehir</label>
-                                <input
-                                    type="text"
-                                    name="customerCity"
-                                    value={formData.customerCity}
-                                    onChange={handleInputChange}
-                                    placeholder="İstanbul"
-                                />
-                            </div>
+                            <button style={{ ...styles.payBtn, ...(submitting ? styles.payBtnDisabled : {}) }} type="submit" disabled={submitting}>
+                                {submitting ? '⏳ İşleniyor...' : `💳 ${cartTotal} ₺ Öde`}
+                            </button>
                         </div>
 
-                        {/* Özet ve Ödeme Butonu */}
-                        {selectedPlan && (
-                            <div className="card" style={{ marginTop: 24 }}>
-                                <div className="card-header">
-                                    <h3>📝 Sipariş Özeti</h3>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                                    <span>{selectedPlan.name}</span>
-                                    <strong style={{ fontSize: '1.2rem' }}>
-                                        {selectedPlan.price.toLocaleString('tr-TR')}₺{getIntervalText(selectedPlan.interval)}
-                                    </strong>
-                                </div>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 24 }}>
-                                    Aboneliğiniz her dönem sonunda otomatik olarak yenilenir.
-                                    İstediğiniz zaman iptal edebilirsiniz.
-                                </p>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary btn-block"
-                                    disabled={submitting}
-                                >
-                                    {submitting ? '⏳ İşleniyor...' : '💳 Ödemeye Geç'}
-                                </button>
-                            </div>
-                        )}
+                        <div style={styles.secureNote}>
+                            🔒 256-bit SSL ile güvenli ödeme • iyzico altyapısı
+                        </div>
                     </form>
-                </div>
+                )}
             </div>
         </div>
     );
 }
+
+const styles = {
+    page: {
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0a0a1a 100%)',
+        padding: '40px 20px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        color: '#fff',
+    },
+    container: {
+        maxWidth: 600,
+        margin: '0 auto',
+    },
+    title: {
+        textAlign: 'center',
+        fontSize: 28,
+        marginBottom: 8,
+    },
+    subtitle: {
+        textAlign: 'center',
+        color: '#aaa',
+        marginBottom: 32,
+        fontSize: 15,
+    },
+    card: {
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 14,
+        padding: 24,
+        marginBottom: 20,
+        backdropFilter: 'blur(10px)',
+    },
+    cardHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    cardTitle: {
+        fontSize: 18,
+        marginBottom: 16,
+        paddingBottom: 12,
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+    },
+    sslBadge: {
+        background: 'rgba(46,125,50,0.2)',
+        color: '#66bb6a',
+        padding: '4px 12px',
+        borderRadius: 20,
+        fontSize: 12,
+        fontWeight: 600,
+    },
+    cartItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '14px 0',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+    },
+    cartItemInfo: { flex: 1 },
+    cartItemName: { fontWeight: 600, fontSize: 15 },
+    cartItemVariant: { color: '#aaa', fontSize: 13, marginTop: 2 },
+    cartItemQty: { color: '#888', fontSize: 13, marginTop: 4 },
+    cartItemPrice: { fontWeight: 700, fontSize: 16, color: '#7c8cf8' },
+    totalRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 16,
+        marginTop: 8,
+    },
+    totalLabel: { fontSize: 18, fontWeight: 600 },
+    totalPrice: { fontSize: 24, fontWeight: 800, color: '#7c8cf8' },
+    formGroup: { marginBottom: 14, flex: 1 },
+    formRow: { display: 'flex', gap: 12 },
+    label: {
+        display: 'block',
+        fontSize: 13,
+        fontWeight: 600,
+        marginBottom: 6,
+        color: '#ccc',
+    },
+    input: {
+        width: '100%',
+        padding: '11px 14px',
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: 10,
+        fontSize: 14,
+        background: 'rgba(255,255,255,0.05)',
+        color: '#fff',
+        boxSizing: 'border-box',
+        outline: 'none',
+    },
+    payBtn: {
+        width: '100%',
+        padding: 14,
+        background: 'linear-gradient(135deg, #5c6ac4, #7c8cf8)',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 12,
+        fontSize: 17,
+        fontWeight: 700,
+        cursor: 'pointer',
+        marginTop: 12,
+    },
+    payBtnDisabled: {
+        background: '#555',
+        cursor: 'not-allowed',
+    },
+    secureNote: {
+        textAlign: 'center',
+        color: '#888',
+        fontSize: 12,
+        marginTop: 16,
+    },
+    loading: {
+        textAlign: 'center',
+        padding: 60,
+        color: '#aaa',
+        fontSize: 16,
+    },
+};
