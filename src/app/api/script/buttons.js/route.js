@@ -2,11 +2,6 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * GET /api/script/buttons.js
- * Shopify checkout butonlarini yakalar ve bizim checkout'a yonlendirir
- * Sepet bilgilerini /cart.js'den okur ve URL ile tasir
- */
 export async function GET() {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
 
@@ -16,11 +11,9 @@ export async function GET() {
 
     var CHECKOUT_URL = '${appUrl}/checkout';
 
-    // Checkout linklerini ve butonlarini yakala
     function interceptCheckout() {
-        // 1. Tum checkout link ve butonlarini bul
         document.addEventListener('click', function(e) {
-            var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], a[href*="cart"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
+            var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
             if (!target) return;
 
             var href = target.getAttribute('href') || '';
@@ -36,7 +29,6 @@ export async function GET() {
             }
         }, true);
 
-        // 2. Form submit'lerini de yakala
         document.addEventListener('submit', function(e) {
             var form = e.target;
             if (form.action && form.action.includes('/checkout')) {
@@ -48,9 +40,7 @@ export async function GET() {
         }, true);
     }
 
-    // Shopify sepetin bilgilerini al ve bizim checkout'a yonlendir
     function redirectToOurCheckout() {
-        // Shopify cart API'den sepet bilgilerini al
         fetch('/cart.js')
             .then(function(res) { return res.json(); })
             .then(function(cart) {
@@ -59,25 +49,57 @@ export async function GET() {
                     return;
                 }
 
-                // Sepet bilgilerini encode et
                 var cartData = {
                     items: cart.items.map(function(item) {
+                        // Resim URL'sini duzelt - Shopify bazen relative verir
+                        var img = item.image || item.featured_image?.url || '';
+                        if (img && !img.startsWith('http')) {
+                            img = 'https:' + img;
+                        }
+
                         return {
                             id: item.product_id,
                             variant_id: item.variant_id,
                             name: item.product_title,
                             variant: item.variant_title || '',
                             price: (item.price / 100).toFixed(2),
+                            line_price: (item.line_price / 100).toFixed(2),
                             quantity: item.quantity,
-                            image: item.image || ''
+                            image: img,
+                            sku: item.sku || '',
+                            handle: item.handle || '',
+                            product_type: item.product_type || '',
+                            vendor: item.vendor || '',
+                            requires_shipping: item.requires_shipping,
+                            taxable: item.taxable,
+                            properties: item.properties || {},
+                            // Abonelik tespiti - Seal, ReCharge vb. pluginler bu alanlari kullanir
+                            selling_plan: item.selling_plan_allocation ? {
+                                id: item.selling_plan_allocation.selling_plan.id,
+                                name: item.selling_plan_allocation.selling_plan.name,
+                                price: (item.selling_plan_allocation.price / 100).toFixed(2)
+                            } : null
                         };
                     }),
                     total: (cart.total_price / 100).toFixed(2),
+                    original_total: (cart.original_total_price / 100).toFixed(2),
+                    total_discount: (cart.total_discount / 100).toFixed(2),
                     currency: cart.currency,
-                    item_count: cart.item_count
+                    item_count: cart.item_count,
+                    requires_shipping: cart.requires_shipping,
+                    note: cart.note || '',
+                    shop_url: window.location.origin,
+                    shop_name: window.Shopify?.shop || window.location.hostname
                 };
 
-                // Base64 encode ile URL'ye ekle
+                // Abonelik var mi kontrol et
+                var hasSubscription = cart.items.some(function(item) {
+                    return item.selling_plan_allocation ||
+                           (item.properties && item.properties._subscription) ||
+                           (item.product_type && item.product_type.toLowerCase().includes('abonelik'));
+                });
+                cartData.has_subscription = hasSubscription;
+
                 var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
                 window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);
             })
@@ -87,7 +109,6 @@ export async function GET() {
             });
     }
 
-    // Sayfa yuklendiginde calistir
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', interceptCheckout);
     } else {
