@@ -1,0 +1,100 @@
+// Shopify + iyzico Subscription App
+// Veritabanı şeması
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Plan {
+  id            String         @id @default(uuid())
+  name          String         // "Aylık Plan", "3 Aylık Plan"
+  description   String?
+  price         Float          // TL cinsinden fiyat
+  currency      String         @default("TRY")
+  interval      String         @default("MONTHLY") // MONTHLY, QUARTERLY, YEARLY
+  intervalCount Int            @default(1) // Her kaç ayda bir
+  trialDays     Int            @default(0)
+  shopifyProductId    String?  // Shopify'daki ürün ID'si
+  shopifyVariantId    String?  // Shopify'daki varyant ID'si
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                  String    @id @default(uuid())
+  
+  // Müşteri bilgileri
+  customerEmail       String
+  customerName        String
+  customerPhone       String?
+  customerAddress     String?
+  customerCity        String?
+  customerCountry     String    @default("Turkey")
+  customerIp          String?
+  
+  // iyzico bilgileri
+  iyzicoSubscriptionRef String?  @unique
+  iyzicoCustomerRef     String?
+  iyzicoCardToken       String?  // Tokenize edilmiş kart
+  iyzicoCardUserKey     String?  // Kullanıcı kart anahtarı
+  
+  // Shopify bilgileri
+  shopifyCustomerId   String?
+  lastShopifyOrderId  String?
+  
+  // Abonelik durumu
+  status              String    @default("PENDING") // PENDING, ACTIVE, PAUSED, CANCELLED, EXPIRED, PAYMENT_FAILED
+  
+  // Tarihler
+  startDate           DateTime?
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  nextPaymentDate     DateTime?
+  cancelledAt         DateTime?
+  
+  // İlişkiler
+  planId              String
+  plan                Plan      @relation(fields: [planId], references: [id])
+  payments            Payment[]
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status])
+  @@index([nextPaymentDate])
+  @@index([customerEmail])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  
+  // Ödeme bilgileri
+  amount            Float
+  currency          String   @default("TRY")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED, REFUNDED
+  
+  // iyzico bilgileri
+  iyzicoPaymentId   String?
+  iyzicoPaymentTransactionId String?
+  errorMessage      String?
+  
+  // Shopify bilgileri
+  shopifyOrderId    String?
+  shopifyOrderName  String?  // "#1001" gibi
+  
+  // İlişkiler
+  subscriptionId    String
+  subscription      Subscription @relation(fields: [subscriptionId], references: [id])
+  
+  createdAt         DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([status])
+}
