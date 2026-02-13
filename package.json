@@ -8,7 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@prisma/client": "^7.4.0",
+    "@prisma/client": "^6.19.2",
     "iyzipay": "^2.0.65",
     "next": "16.1.6",
     "react": "19.2.3",
@@ -16,6 +16,6 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "prisma": "^7.4.0"
+    "prisma": "^6.19.2"
   }
 }
