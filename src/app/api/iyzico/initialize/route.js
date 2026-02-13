@@ -55,14 +55,14 @@ export async function POST(request) {
             },
         });
 
-        // İsim parçalama
+        // Isim parcalama
         const nameParts = customerName.trim().split(' ');
-        const firstName = nameParts[0] || 'Müşteri';
-        const lastName = nameParts.slice(1).join(' ') || 'Müşteri';
+        const firstName = nameParts[0] || 'Musteri';
+        const lastName = nameParts.slice(1).join(' ') || 'Musteri';
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        // iyzico checkout form başlat
+        // iyzico checkout form baslat
         const result = await initializeCheckoutForm({
             price: plan.price,
             paidPrice: plan.price,
@@ -70,32 +70,37 @@ export async function POST(request) {
             basketId: basketId,
             callbackUrl: `${appUrl}/api/iyzico/callback?subscriptionId=${subscription.id}`,
             buyer: {
-                id: subscription.id,
+                id: String(subscription.id),
                 name: firstName,
                 surname: lastName,
-                gsmNumber: customerPhone || '+905000000000',
+                gsmNumber: customerPhone || '+905350000000',
                 email: customerEmail,
-                identityNumber: customerIdentityNumber || '11111111111',
-                registrationAddress: customerAddress || 'Türkiye',
-                ip: subscription.customerIp,
+                identityNumber: customerIdentityNumber || '74300864791',
+                lastLoginDate: new Date().toISOString().replace('T', ' ').split('.')[0],
+                registrationDate: new Date().toISOString().replace('T', ' ').split('.')[0],
+                registrationAddress: customerAddress || 'Istanbul Turkiye',
+                ip: subscription.customerIp || '85.34.78.112',
                 city: customerCity || 'Istanbul',
                 country: 'Turkey',
+                zipCode: '34000',
             },
             shippingAddress: {
                 contactName: customerName,
                 city: customerCity || 'Istanbul',
                 country: 'Turkey',
-                address: customerAddress || 'Türkiye',
+                address: customerAddress || 'Istanbul Turkiye',
+                zipCode: '34000',
             },
             billingAddress: {
                 contactName: customerName,
                 city: customerCity || 'Istanbul',
                 country: 'Turkey',
-                address: customerAddress || 'Türkiye',
+                address: customerAddress || 'Istanbul Turkiye',
+                zipCode: '34000',
             },
             basketItems: [
                 {
-                    id: plan.id,
+                    id: String(plan.id),
                     name: plan.name,
                     category1: 'Abonelik',
                     itemType: 'VIRTUAL',

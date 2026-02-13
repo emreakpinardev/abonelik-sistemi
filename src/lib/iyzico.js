@@ -61,11 +61,23 @@ export async function initializeCheckoutForm({
     billingAddress,
     basketItems,
 }) {
+    // iyzico fiyat formatı: ondalık kısmı olmalı (ör: "1500.0")
+    const formatPrice = (p) => {
+        const num = parseFloat(p).toString();
+        return num.includes('.') ? num : num + '.0';
+    };
+
+    // basketItems fiyatlarını da formatla
+    const formattedItems = basketItems.map(item => ({
+        ...item,
+        price: formatPrice(item.price),
+    }));
+
     const body = {
         locale: 'tr',
         conversationId: basketId,
-        price: price.toString(),
-        paidPrice: paidPrice.toString(),
+        price: formatPrice(price),
+        paidPrice: formatPrice(paidPrice),
         currency: currency,
         basketId: basketId,
         paymentGroup: 'SUBSCRIPTION',
@@ -74,7 +86,7 @@ export async function initializeCheckoutForm({
         buyer: buyer,
         shippingAddress: shippingAddress,
         billingAddress: billingAddress,
-        basketItems: basketItems,
+        basketItems: formattedItems,
     };
 
     return await iyzicoRequest('/payment/iyzi-checkout/initialize', body);
