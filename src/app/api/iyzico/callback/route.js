@@ -3,6 +3,8 @@ import { retrieveCheckoutForm } from '@/lib/iyzico';
 import { createOrder, findCustomerByEmail, createCustomer } from '@/lib/shopify';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/iyzico/callback
  * iyzico ödeme tamamlandığında bu endpoint çağrılır

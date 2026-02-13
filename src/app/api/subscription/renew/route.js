@@ -3,6 +3,8 @@ import { createPaymentWithSavedCard } from '@/lib/iyzico';
 import { createOrder } from '@/lib/shopify';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/subscription/renew
  * Vercel Cron Job tarafından her gün çağrılır

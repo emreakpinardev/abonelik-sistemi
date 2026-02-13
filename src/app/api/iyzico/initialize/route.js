@@ -3,6 +3,8 @@ import { initializeCheckoutForm } from '@/lib/iyzico';
 import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/iyzico/initialize
  * iyzico checkout formunu başlatır

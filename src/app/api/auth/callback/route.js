@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/auth/callback
  * Shopify OAuth callback
@@ -8,49 +10,49 @@ import prisma from '@/lib/prisma';
  * Code'u access token'a çevirir ve veritabanına kaydeder
  */
 export async function GET(request) {
+  try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+    const shop = url.searchParams.get('shop');
+    const hmac = url.searchParams.get('hmac');
+
+    if (!code || !shop) {
+      return NextResponse.json({ error: 'Eksik parametreler' }, { status: 400 });
+    }
+
+    // Code'u access token'a çevir
+    const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_CLIENT_ID,
+        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+        code: code,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('Token exchange error:', errorText);
+      return NextResponse.json({ error: 'Token alınamadı' }, { status: 500 });
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    console.log('===========================================');
+    console.log('SHOPIFY ACCESS TOKEN ALINDI!');
+    console.log('Shop:', shop);
+    console.log('Token:', accessToken);
+    console.log('===========================================');
+    console.log('Bu tokeni .env dosyanıza ekleyin:');
+    console.log(`SHOPIFY_ACCESS_TOKEN="${accessToken}"`);
+    console.log(`SHOPIFY_STORE_DOMAIN="${shop}"`);
+    console.log('===========================================');
+
+    // Token'ı veritabanına kaydet (opsiyonel, .env'ye de eklenebilir)
     try {
-        const url = new URL(request.url);
-        const code = url.searchParams.get('code');
-        const shop = url.searchParams.get('shop');
-        const hmac = url.searchParams.get('hmac');
-
-        if (!code || !shop) {
-            return NextResponse.json({ error: 'Eksik parametreler' }, { status: 400 });
-        }
-
-        // Code'u access token'a çevir
-        const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                client_id: process.env.SHOPIFY_CLIENT_ID,
-                client_secret: process.env.SHOPIFY_CLIENT_SECRET,
-                code: code,
-            }),
-        });
-
-        if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error('Token exchange error:', errorText);
-            return NextResponse.json({ error: 'Token alınamadı' }, { status: 500 });
-        }
-
-        const tokenData = await tokenResponse.json();
-        const accessToken = tokenData.access_token;
-
-        console.log('===========================================');
-        console.log('SHOPIFY ACCESS TOKEN ALINDI!');
-        console.log('Shop:', shop);
-        console.log('Token:', accessToken);
-        console.log('===========================================');
-        console.log('Bu tokeni .env dosyanıza ekleyin:');
-        console.log(`SHOPIFY_ACCESS_TOKEN="${accessToken}"`);
-        console.log(`SHOPIFY_STORE_DOMAIN="${shop}"`);
-        console.log('===========================================');
-
-        // Token'ı veritabanına kaydet (opsiyonel, .env'ye de eklenebilir)
-        try {
-            await prisma.$executeRawUnsafe(`
+      await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "ShopifyStore" (
           "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
           "shop" TEXT UNIQUE NOT NULL,
@@ -60,20 +62,20 @@ export async function GET(request) {
         )
       `);
 
-            await prisma.$executeRawUnsafe(`
+      await prisma.$executeRawUnsafe(`
         INSERT INTO "ShopifyStore" ("shop", "accessToken", "scopes")
         VALUES ($1, $2, $3)
         ON CONFLICT ("shop") 
         DO UPDATE SET "accessToken" = $2, "scopes" = $3
       `, shop, accessToken, tokenData.scope || '');
-        } catch (dbError) {
-            console.error('Token veritabanına kaydedilemedi (sorun değil, .env kullanılabilir):', dbError.message);
-        }
+    } catch (dbError) {
+      console.error('Token veritabanına kaydedilemedi (sorun değil, .env kullanılabilir):', dbError.message);
+    }
 
-        // Admin panele yönlendir
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Admin panele yönlendir
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        return new Response(`
+    return new Response(`
       <!DOCTYPE html>
       <html>
         <head><title>Kurulum Başarılı</title></head>
@@ -91,11 +93,11 @@ export async function GET(request) {
         </body>
       </html>
     `, {
-            status: 200,
-            headers: { 'Content-Type': 'text/html' },
-        });
-    } catch (error) {
-        console.error('OAuth callback error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    });
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
