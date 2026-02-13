@@ -146,32 +146,12 @@ export default function CheckoutPage() {
                         <span className="co-breadcrumb">Sepet › <strong>Adres</strong> › Ödeme</span>
                     </div>
 
-                    {/* SATIN ALMA TIPI SECIMI */}
-                    <div className="co-purchase-type">
-                        <h3>Satın Alma Seçenekleri</h3>
-                        <div className="co-purchase-options">
-                            <label className={`co-purchase-opt ${purchaseType === 'single' ? 'active' : ''}`}>
-                                <input type="radio" name="purchaseType" value="single" checked={purchaseType === 'single'} onChange={() => setPurchaseType('single')} />
-                                <div className="co-purchase-icon">🛒</div>
-                                <div className="co-purchase-info">
-                                    <strong>Tek Seferlik</strong>
-                                    <span>Bir kere satın al</span>
-                                </div>
-                            </label>
-                            <label className={`co-purchase-opt ${purchaseType === 'subscription' ? 'active' : ''}`}>
-                                <input type="radio" name="purchaseType" value="subscription" checked={purchaseType === 'subscription'} onChange={() => setPurchaseType('subscription')} />
-                                <div className="co-purchase-icon">🔄</div>
-                                <div className="co-purchase-info">
-                                    <strong>Abonelik</strong>
-                                    <span>Düzenli teslimat</span>
-                                </div>
-                            </label>
-                        </div>
-                        {isSubscription && (
-                            <div className="co-sub-info">
-                                🔄 Abonelik seçildi — Ödeme sonrası düzenli teslimat aboneliğiniz başlayacaktır.
-                            </div>
-                        )}
+                    {/* SATIN ALMA TIPI — Ürün sayfasından gelen bilgi */}
+                    <div className={`co-purchase-badge ${isSubscription ? 'sub' : 'single'}`}>
+                        <span className="co-purchase-badge-icon">{isSubscription ? '🔄' : '🛒'}</span>
+                        <span className="co-purchase-badge-text">
+                            {isSubscription ? 'Abonelik Siparişi — Düzenli teslimat' : 'Tek Seferlik Sipariş'}
+                        </span>
                     </div>
 
                     {/* DEBUG: Gelen Veriler */}
@@ -322,19 +302,12 @@ const css = `
 .co-breadcrumb { font-size: 13px; color: #999; }
 .co-breadcrumb strong { color: #1a1a2e; }
 
-/* Purchase Type Selector */
-.co-purchase-type { margin-bottom: 24px; }
-.co-purchase-type h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
-.co-purchase-options { display: flex; gap: 16px; }
-.co-purchase-opt { flex: 1; display: flex; align-items: center; gap: 12px; padding: 16px 20px; border: 2px solid #e0e0e4; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: #fff; }
-.co-purchase-opt:hover { border-color: #bbb; }
-.co-purchase-opt.active { border-color: #1a1a2e; background: #fafaff; box-shadow: 0 2px 8px rgba(26,26,46,0.08); }
-.co-purchase-opt input { display: none; }
-.co-purchase-icon { font-size: 28px; }
-.co-purchase-info { display: flex; flex-direction: column; }
-.co-purchase-info strong { font-size: 15px; font-weight: 600; }
-.co-purchase-info span { font-size: 12px; color: #999; margin-top: 2px; }
-.co-sub-info { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #e65100; margin-top: 12px; }
+/* Purchase Type Badge (info-only) */
+.co-purchase-badge { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+.co-purchase-badge.single { background: #f0f7ff; border: 1px solid #90caf9; color: #1565c0; }
+.co-purchase-badge.sub { background: #fff8e1; border: 1px solid #ffe082; color: #e65100; }
+.co-purchase-badge-icon { font-size: 20px; }
+.co-purchase-badge-text { flex: 1; }
 
 /* Debug Panel */
 .co-debug {
