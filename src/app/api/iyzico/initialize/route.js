@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
  * Müşteri bu form üzerinden kartını girer ve ilk ödeme yapılır
  */
 export async function POST(request) {
+    console.log('iyzico initialize handler started');
     try {
         const body = await request.json();
         const {

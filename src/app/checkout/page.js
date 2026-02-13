@@ -58,7 +58,14 @@ export default function CheckoutPage() {
                 }),
             });
 
-            const data = await res.json();
+            let data;
+            const text = await res.text();
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('JSON parse error:', e, 'Response text:', text);
+                throw new Error(`Server response (${res.status}): ${text.substring(0, 100)}...`);
+            }
 
             if (data.success && data.checkoutFormContent) {
                 // iyzico checkout formunu göster

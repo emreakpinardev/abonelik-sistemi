@@ -33,7 +33,7 @@ export async function initializeCheckoutForm({
             paidPrice: paidPrice.toString(),
             currency: currency,
             basketId: basketId,
-            paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION,
+            paymentGroup: 'SUBSCRIPTION',
             callbackUrl: callbackUrl,
             enabledInstallments: [1], // Tek çekim
             buyer: buyer,
@@ -101,8 +101,8 @@ export async function createPaymentWithSavedCard({
             paidPrice: paidPrice.toString(),
             currency: currency,
             installment: '1',
-            paymentChannel: Iyzipay.PAYMENT_CHANNEL.WEB,
-            paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION,
+            paymentChannel: 'WEB',
+            paymentGroup: 'SUBSCRIPTION',
             paymentCard: {
                 cardUserKey: cardUserKey,
                 cardToken: cardToken,
@@ -167,8 +167,8 @@ export async function initializeThreeDS({
             paidPrice: paidPrice.toString(),
             currency: currency,
             installment: '1',
-            paymentChannel: Iyzipay.PAYMENT_CHANNEL.WEB,
-            paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION,
+            paymentChannel: 'WEB',
+            paymentGroup: 'SUBSCRIPTION',
             callbackUrl: callbackUrl,
             paymentCard: {
                 cardUserKey: cardUserKey,
