@@ -37,6 +37,8 @@ export default function CheckoutPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [checkoutHtml, setCheckoutHtml] = useState('');
+    const [paymentType, setPaymentType] = useState('subscription');
+    const [productInfo, setProductInfo] = useState({});
     const [formData, setFormData] = useState({
         customerName: '',
         customerEmail: '',
@@ -46,9 +48,23 @@ export default function CheckoutPage() {
         customerIdentityNumber: '',
     });
 
-    // Planları yükle
+    // URL parametrelerini oku ve planlari yukle
     useEffect(() => {
-        fetchPlans();
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type') || 'subscription';
+        setPaymentType(type);
+
+        if (type === 'single') {
+            setProductInfo({
+                id: params.get('product_id') || '',
+                name: params.get('product_name') || 'Ürün',
+                price: params.get('product_price') || '',
+                variantId: params.get('variant_id') || '',
+            });
+            setLoading(false);
+        } else {
+            fetchPlans();
+        }
     }, []);
 
     async function fetchPlans() {
@@ -70,21 +86,37 @@ export default function CheckoutPage() {
     async function handleSubmit(e) {
         e.preventDefault();
 
-        if (!selectedPlan) {
+        if (paymentType === 'subscription' && !selectedPlan) {
             alert('Lütfen bir plan seçin');
+            return;
+        }
+
+        if (paymentType === 'single' && !productInfo.price) {
+            alert('Ürün fiyatı bulunamadı');
             return;
         }
 
         setSubmitting(true);
 
         try {
+            const payload = {
+                type: paymentType,
+                ...formData,
+            };
+
+            if (paymentType === 'subscription') {
+                payload.planId = selectedPlan.id;
+            } else {
+                payload.productId = productInfo.id;
+                payload.productName = productInfo.name;
+                payload.productPrice = productInfo.price;
+                payload.variantId = productInfo.variantId;
+            }
+
             const res = await fetch('/api/iyzico/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    planId: selectedPlan.id,
-                    ...formData,
-                }),
+                body: JSON.stringify(payload),
             });
 
             let data;
