@@ -1,85 +1,99 @@
-import Iyzipay from 'iyzipay';
-
-// iyzico API istemcisi
-const iyzipay = new Iyzipay({
-    apiKey: process.env.IYZICO_API_KEY,
-    secretKey: process.env.IYZICO_SECRET_KEY,
-    uri: process.env.IYZICO_BASE_URL || 'https://sandbox-api.iyzipay.com',
-});
+import crypto from 'crypto';
 
 /**
- * iyzico checkout form başlat (ilk abonelik ödemesi)
- * 3D Secure ile kart bilgilerini toplar ve tokenize eder
+ * iyzico REST API client - native fetch ile (npm paketi olmadan)
+ * Vercel serverless'ta sorunsuz calisir
+ */
+
+const API_KEY = process.env.IYZICO_API_KEY;
+const SECRET_KEY = process.env.IYZICO_SECRET_KEY;
+const BASE_URL = process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com';
+
+function generateRandomString() {
+    return Date.now().toString() + Math.random().toString(36).slice(2, 10);
+}
+
+function generateAuthorizationHeader(uri, body, randomString) {
+    const signature = crypto
+        .createHmac('sha256', SECRET_KEY)
+        .update(randomString + uri + JSON.stringify(body))
+        .digest('hex');
+
+    const authorizationParams = [
+        'apiKey:' + API_KEY,
+        'randomKey:' + randomString,
+        'signature:' + signature,
+    ];
+
+    return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
+}
+
+async function iyzicoRequest(path, body) {
+    const randomString = generateRandomString();
+    const authorization = generateAuthorizationHeader(path, body, randomString);
+
+    const response = await fetch(BASE_URL + path, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authorization,
+            'x-iyzi-rnd': randomString,
+            'x-iyzi-client-version': 'iyzipay-node-2.0.65',
+        },
+        body: JSON.stringify(body),
+    });
+
+    return await response.json();
+}
+
+/**
+ * iyzico checkout form baslat (ilk abonelik odemesi)
  */
 export async function initializeCheckoutForm({
     price,
     paidPrice,
     currency = 'TRY',
     basketId,
-    paymentGroup = 'SUBSCRIPTION',
     callbackUrl,
     buyer,
     shippingAddress,
     billingAddress,
     basketItems,
-    enableInstallment = 0,
-    cardUserKey = null,
 }) {
-    return new Promise((resolve, reject) => {
-        const request = {
-            locale: 'tr',
-            conversationId: basketId,
-            price: price.toString(),
-            paidPrice: paidPrice.toString(),
-            currency: currency,
-            basketId: basketId,
-            paymentGroup: 'SUBSCRIPTION',
-            callbackUrl: callbackUrl,
-            enabledInstallments: [1], // Tek çekim
-            buyer: buyer,
-            shippingAddress: shippingAddress,
-            billingAddress: billingAddress,
-            basketItems: basketItems,
-        };
+    const body = {
+        locale: 'tr',
+        conversationId: basketId,
+        price: price.toString(),
+        paidPrice: paidPrice.toString(),
+        currency: currency,
+        basketId: basketId,
+        paymentGroup: 'SUBSCRIPTION',
+        callbackUrl: callbackUrl,
+        enabledInstallments: [1],
+        buyer: buyer,
+        shippingAddress: shippingAddress,
+        billingAddress: billingAddress,
+        basketItems: basketItems,
+    };
 
-        // Eğer daha önce kart kaydedilmişse
-        if (cardUserKey) {
-            request.cardUserKey = cardUserKey;
-        }
-
-        iyzipay.checkoutFormInitialize.create(request, (err, result) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(result);
-            }
-        });
-    });
+    return await iyzicoRequest('/payment/iyzi-checkout/initialize', body);
 }
 
 /**
  * iyzico checkout form sonucunu al
  */
 export async function retrieveCheckoutForm(token) {
-    return new Promise((resolve, reject) => {
-        const request = {
-            locale: 'tr',
-            token: token,
-        };
+    const body = {
+        locale: 'tr',
+        token: token,
+    };
 
-        iyzipay.checkoutForm.retrieve(request, (err, result) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(result);
-            }
-        });
-    });
+    return await iyzicoRequest('/payment/iyzi-checkout/auth', body);
 }
 
 /**
- * Kayıtlı kartla tekrarlayan ödeme çek
- * Bu fonksiyon cron job ile çağrılır
+ * Kayitli kartla tekrarlayan odeme cek (cron job ile)
  */
 export async function createPaymentWithSavedCard({
     price,
@@ -93,101 +107,36 @@ export async function createPaymentWithSavedCard({
     billingAddress,
     basketItems,
 }) {
-    return new Promise((resolve, reject) => {
-        const request = {
-            locale: 'tr',
-            conversationId: conversationId,
-            price: price.toString(),
-            paidPrice: paidPrice.toString(),
-            currency: currency,
-            installment: '1',
-            paymentChannel: 'WEB',
-            paymentGroup: 'SUBSCRIPTION',
-            paymentCard: {
-                cardUserKey: cardUserKey,
-                cardToken: cardToken,
-            },
-            buyer: buyer,
-            shippingAddress: shippingAddress,
-            billingAddress: billingAddress,
-            basketItems: basketItems,
-        };
+    const body = {
+        locale: 'tr',
+        conversationId: conversationId,
+        price: price.toString(),
+        paidPrice: paidPrice.toString(),
+        currency: currency,
+        installment: '1',
+        paymentChannel: 'WEB',
+        paymentGroup: 'SUBSCRIPTION',
+        paymentCard: {
+            cardUserKey: cardUserKey,
+            cardToken: cardToken,
+        },
+        buyer: buyer,
+        shippingAddress: shippingAddress,
+        billingAddress: billingAddress,
+        basketItems: basketItems,
+    };
 
-        iyzipay.payment.create(request, (err, result) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(result);
-            }
-        });
-    });
+    return await iyzicoRequest('/payment/auth', body);
 }
 
 /**
- * Kayıtlı kartları listele
+ * Kayitli kartlari listele
  */
 export async function retrieveCards(cardUserKey) {
-    return new Promise((resolve, reject) => {
-        const request = {
-            locale: 'tr',
-            cardUserKey: cardUserKey,
-        };
+    const body = {
+        locale: 'tr',
+        cardUserKey: cardUserKey,
+    };
 
-        iyzipay.cardList.retrieve(request, (err, result) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(result);
-            }
-        });
-    });
+    return await iyzicoRequest('/cardstorage/cards', body);
 }
-
-/**
- * 3D Secure ile ödeme başlat
- */
-export async function initializeThreeDS({
-    price,
-    paidPrice,
-    currency = 'TRY',
-    conversationId,
-    cardUserKey,
-    cardToken,
-    callbackUrl,
-    buyer,
-    shippingAddress,
-    billingAddress,
-    basketItems,
-}) {
-    return new Promise((resolve, reject) => {
-        const request = {
-            locale: 'tr',
-            conversationId: conversationId,
-            price: price.toString(),
-            paidPrice: paidPrice.toString(),
-            currency: currency,
-            installment: '1',
-            paymentChannel: 'WEB',
-            paymentGroup: 'SUBSCRIPTION',
-            callbackUrl: callbackUrl,
-            paymentCard: {
-                cardUserKey: cardUserKey,
-                cardToken: cardToken,
-            },
-            buyer: buyer,
-            shippingAddress: shippingAddress,
-            billingAddress: billingAddress,
-            basketItems: basketItems,
-        };
-
-        iyzipay.threedsInitialize.create(request, (err, result) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(result);
-            }
-        });
-    });
-}
-
-export default iyzipay;
