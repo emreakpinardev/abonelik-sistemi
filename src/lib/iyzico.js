@@ -89,7 +89,7 @@ export async function initializeCheckoutForm({
         basketItems: formattedItems,
     };
 
-    return await iyzicoRequest('/payment/iyzi-checkout/initialize', body);
+    return await iyzicoRequest('/payment/iyzipos/checkoutform/initialize/auth/ecom', body);
 }
 
 /**
@@ -101,7 +101,7 @@ export async function retrieveCheckoutForm(token) {
         token: token,
     };
 
-    return await iyzicoRequest('/payment/iyzi-checkout/auth', body);
+    return await iyzicoRequest('/payment/iyzipos/checkoutform/auth/ecom/detail', body);
 }
 
 /**

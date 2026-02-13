@@ -25,7 +25,7 @@ function generateAuthorizationHeader(uri, body, randomString) {
 }
 
 export async function GET() {
-    const path = '/payment/iyzi-checkout/initialize';
+    const path = '/payment/iyzipos/checkoutform/initialize/auth/ecom';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     const body = {
