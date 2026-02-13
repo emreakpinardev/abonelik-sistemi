@@ -82,32 +82,10 @@ export async function POST(request) {
 
 /**
  * GET /api/shopify/install-script
- * Mevcut script tag'leri listeler
+ * Scripti yukler - tarayicidan direkt acilabilir
  */
 export async function GET() {
-    try {
-        const shop = process.env.SHOPIFY_SHOP_URL;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-
-        if (!shop || !accessToken) {
-            return NextResponse.json({ error: 'SHOPIFY_SHOP_URL veya SHOPIFY_ACCESS_TOKEN eksik' }, { status: 400 });
-        }
-
-        const res = await fetch(`https://${shop}/admin/api/2024-01/script_tags.json`, {
-            headers: {
-                'X-Shopify-Access-Token': accessToken,
-                'Content-Type': 'application/json',
-            },
-        });
-
-        const data = await res.json();
-        return NextResponse.json({
-            success: true,
-            scriptTags: data.script_tags || [],
-        });
-    } catch (error) {
-        return NextResponse.json({
-            error: error.message,
-        }, { status: 500 });
-    }
+    // POST ile ayni islemi yap
+    const fakeRequest = { json: async () => ({}) };
+    return POST(fakeRequest);
 }
