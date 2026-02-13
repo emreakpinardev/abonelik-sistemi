@@ -112,9 +112,12 @@ export async function POST(request) {
                 subscriptionId: subscription.id,
             });
         } else {
+            console.error('iyzico error:', JSON.stringify(result));
             return NextResponse.json({
                 error: 'iyzico checkout başlatılamadı',
                 details: result.errorMessage,
+                errorCode: result.errorCode,
+                fullResponse: result,
             }, { status: 400 });
         }
     } catch (error) {
