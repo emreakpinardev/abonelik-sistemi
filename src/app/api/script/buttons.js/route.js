@@ -11,6 +11,43 @@ export async function GET() {
 
     var CHECKOUT_URL = '${appUrl}/checkout';
 
+    // ===== URUN SAYFASINDA SATIN ALMA TIPINI YAKALA =====
+    function trackPurchaseType() {
+        // Seal veya diger plugin'lerin "Tek seferlik" / "Abonelik" butonlarini yakalabody
+        var purchaseButtons = document.querySelectorAll('[data-selling-plan], .subscription-widget button, .purchase-option, .selling-plan-widget button, .seal-subscription-widget button');
+        
+        // Genel buton yalama - "Tek seferlik" veya "Abonelik" yazan butonlari bul
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('button, [role="button"], label, input[type="radio"]');
+            if (!btn) return;
+
+            var text = (btn.textContent || btn.innerText || '').trim().toLowerCase();
+            var value = (btn.value || '').toLowerCase();
+
+            if (text.includes('tek seferlik') || text.includes('one-time') || text.includes('one time') || value === 'one-time') {
+                sessionStorage.setItem('purchase_type', 'single');
+                console.log('[SKYCROPS] Satin alma tipi: Tek Seferlik');
+            } else if (text.includes('abonelik') || text.includes('subscription') || text.includes('subscribe') || value === 'subscription') {
+                sessionStorage.setItem('purchase_type', 'subscription');
+                console.log('[SKYCROPS] Satin alma tipi: Abonelik');
+            }
+        });
+
+        // Varsayilan olarak secili olan butonu kontrol et
+        setTimeout(function() {
+            var activeBtn = document.querySelector('.purchase-option.active, .selling-plan-widget .active, [data-selling-plan].selected, .subscription-widget .active');
+            if (activeBtn) {
+                var text = (activeBtn.textContent || '').toLowerCase();
+                if (text.includes('abonelik') || text.includes('subscription')) {
+                    sessionStorage.setItem('purchase_type', 'subscription');
+                } else {
+                    sessionStorage.setItem('purchase_type', 'single');
+                }
+            }
+        }, 1000);
+    }
+
+    // ===== CHECKOUT BUTONLARINI YAKALA =====
     function interceptCheckout() {
         document.addEventListener('click', function(e) {
             var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
@@ -40,6 +77,7 @@ export async function GET() {
         }, true);
     }
 
+    // ===== SEPET BILGILERINI AL VE CHECKOUT'A YONLENDIR =====
     function redirectToOurCheckout() {
         fetch('/cart.js')
             .then(function(res) { return res.json(); })
@@ -49,13 +87,13 @@ export async function GET() {
                     return;
                 }
 
+                // Secili satin alma tipi
+                var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
+
                 var cartData = {
                     items: cart.items.map(function(item) {
-                        // Resim URL'sini duzelt - Shopify bazen relative verir
-                        var img = item.image || item.featured_image?.url || '';
-                        if (img && !img.startsWith('http')) {
-                            img = 'https:' + img;
-                        }
+                        var img = item.image || '';
+                        if (img && !img.startsWith('http')) img = 'https:' + img;
 
                         return {
                             id: item.product_id,
@@ -71,34 +109,22 @@ export async function GET() {
                             product_type: item.product_type || '',
                             vendor: item.vendor || '',
                             requires_shipping: item.requires_shipping,
-                            taxable: item.taxable,
-                            properties: item.properties || {},
-                            // Abonelik tespiti - Seal, ReCharge vb. pluginler bu alanlari kullanir
                             selling_plan: item.selling_plan_allocation ? {
                                 id: item.selling_plan_allocation.selling_plan.id,
                                 name: item.selling_plan_allocation.selling_plan.name,
-                                price: (item.selling_plan_allocation.price / 100).toFixed(2)
                             } : null
                         };
                     }),
                     total: (cart.total_price / 100).toFixed(2),
-                    original_total: (cart.original_total_price / 100).toFixed(2),
-                    total_discount: (cart.total_discount / 100).toFixed(2),
+                    total_discount: ((cart.total_discount || 0) / 100).toFixed(2),
                     currency: cart.currency,
                     item_count: cart.item_count,
-                    requires_shipping: cart.requires_shipping,
-                    note: cart.note || '',
+                    purchase_type: purchaseType,
                     shop_url: window.location.origin,
                     shop_name: window.Shopify?.shop || window.location.hostname
                 };
 
-                // Abonelik var mi kontrol et
-                var hasSubscription = cart.items.some(function(item) {
-                    return item.selling_plan_allocation ||
-                           (item.properties && item.properties._subscription) ||
-                           (item.product_type && item.product_type.toLowerCase().includes('abonelik'));
-                });
-                cartData.has_subscription = hasSubscription;
+                console.log('[SKYCROPS] Checkout verisi:', cartData);
 
                 var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
                 window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);
@@ -109,9 +135,14 @@ export async function GET() {
             });
     }
 
+    // Basla
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', interceptCheckout);
+        document.addEventListener('DOMContentLoaded', function() {
+            trackPurchaseType();
+            interceptCheckout();
+        });
     } else {
+        trackPurchaseType();
         interceptCheckout();
     }
 })();

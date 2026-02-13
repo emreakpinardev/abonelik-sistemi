@@ -26,6 +26,7 @@ export default function CheckoutPage() {
     const [submitting, setSubmitting] = useState(false);
     const [checkoutHtml, setCheckoutHtml] = useState('');
     const [shippingMethod, setShippingMethod] = useState('free');
+    const [purchaseType, setPurchaseType] = useState('single');
     const [discountCode, setDiscountCode] = useState('');
     const [formData, setFormData] = useState({
         firstName: '', lastName: '', email: '', phone: '',
@@ -39,8 +40,12 @@ export default function CheckoutPage() {
             try {
                 const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
                 setCartData(decoded);
+                // Satin alma tipi: script'ten gelen bilgi veya varsayilan
+                if (decoded.purchase_type) {
+                    setPurchaseType(decoded.purchase_type);
+                    console.log('🛒 Satın alma tipi (scriptden):', decoded.purchase_type);
+                }
                 console.log('📦 Shopify Sepet Verisi:', decoded);
-                console.log('🔄 Abonelik var mı:', decoded.has_subscription);
                 console.log('🛒 Ürün sayısı:', decoded.item_count);
                 console.log('💰 Toplam:', decoded.total, decoded.currency);
                 console.log('🏪 Mağaza:', decoded.shop_name);
@@ -63,7 +68,7 @@ export default function CheckoutPage() {
     const subtotal = parseFloat(cartData?.total || 0);
     const shippingCost = shippingMethod === 'express' ? 49.90 : 0;
     const total = (subtotal + shippingCost).toFixed(2);
-    const hasSubscription = cartData?.has_subscription || false;
+    const isSubscription = purchaseType === 'subscription';
 
     function handleInputChange(e) {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -81,7 +86,7 @@ export default function CheckoutPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: hasSubscription ? 'subscription' : 'single',
+                    type: purchaseType,
                     productId: items.map(i => i.id).join(','),
                     productName: items.map(i => i.name).join(', '),
                     productPrice: total,
@@ -141,17 +146,38 @@ export default function CheckoutPage() {
                         <span className="co-breadcrumb">Sepet › <strong>Adres</strong> › Ödeme</span>
                     </div>
 
-                    {/* Abonelik Bildirimi */}
-                    {hasSubscription && (
-                        <div className="co-subscription-banner">
-                            🔄 Sepetinizde <strong>abonelik ürünü</strong> var. Ödeme sonrası aboneliğiniz otomatik başlayacaktır.
+                    {/* SATIN ALMA TIPI SECIMI */}
+                    <div className="co-purchase-type">
+                        <h3>Satın Alma Seçenekleri</h3>
+                        <div className="co-purchase-options">
+                            <label className={`co-purchase-opt ${purchaseType === 'single' ? 'active' : ''}`}>
+                                <input type="radio" name="purchaseType" value="single" checked={purchaseType === 'single'} onChange={() => setPurchaseType('single')} />
+                                <div className="co-purchase-icon">🛒</div>
+                                <div className="co-purchase-info">
+                                    <strong>Tek Seferlik</strong>
+                                    <span>Bir kere satın al</span>
+                                </div>
+                            </label>
+                            <label className={`co-purchase-opt ${purchaseType === 'subscription' ? 'active' : ''}`}>
+                                <input type="radio" name="purchaseType" value="subscription" checked={purchaseType === 'subscription'} onChange={() => setPurchaseType('subscription')} />
+                                <div className="co-purchase-icon">🔄</div>
+                                <div className="co-purchase-info">
+                                    <strong>Abonelik</strong>
+                                    <span>Düzenli teslimat</span>
+                                </div>
+                            </label>
                         </div>
-                    )}
+                        {isSubscription && (
+                            <div className="co-sub-info">
+                                🔄 Abonelik seçildi — Ödeme sonrası düzenli teslimat aboneliğiniz başlayacaktır.
+                            </div>
+                        )}
+                    </div>
 
                     {/* DEBUG: Gelen Veriler */}
                     <details className="co-debug">
                         <summary>🔍 Gelen Veriler (Test İçin)</summary>
-                        <pre>{JSON.stringify(cartData, null, 2)}</pre>
+                        <pre>{JSON.stringify({ ...cartData, purchase_type: purchaseType }, null, 2)}</pre>
                     </details>
 
                     <div className="co-grid">
@@ -296,16 +322,19 @@ const css = `
 .co-breadcrumb { font-size: 13px; color: #999; }
 .co-breadcrumb strong { color: #1a1a2e; }
 
-/* Subscription Banner */
-.co-subscription-banner {
-    background: #fff8e1;
-    border: 1px solid #ffe082;
-    border-radius: 10px;
-    padding: 14px 20px;
-    font-size: 14px;
-    color: #e65100;
-    margin-bottom: 20px;
-}
+/* Purchase Type Selector */
+.co-purchase-type { margin-bottom: 24px; }
+.co-purchase-type h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+.co-purchase-options { display: flex; gap: 16px; }
+.co-purchase-opt { flex: 1; display: flex; align-items: center; gap: 12px; padding: 16px 20px; border: 2px solid #e0e0e4; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: #fff; }
+.co-purchase-opt:hover { border-color: #bbb; }
+.co-purchase-opt.active { border-color: #1a1a2e; background: #fafaff; box-shadow: 0 2px 8px rgba(26,26,46,0.08); }
+.co-purchase-opt input { display: none; }
+.co-purchase-icon { font-size: 28px; }
+.co-purchase-info { display: flex; flex-direction: column; }
+.co-purchase-info strong { font-size: 15px; font-weight: 600; }
+.co-purchase-info span { font-size: 12px; color: #999; margin-top: 2px; }
+.co-sub-info { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #e65100; margin-top: 12px; }
 
 /* Debug Panel */
 .co-debug {
