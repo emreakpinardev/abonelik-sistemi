@@ -1,6 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+// iyzico formunu script'leriyle birlikte render eden bileşen
+function IyzicoForm({ html }) {
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        if (!containerRef.current || !html) return;
+
+        // HTML'i container'a ekle
+        containerRef.current.innerHTML = html;
+
+        // Script tag'lerini bul ve çalıştır
+        const scripts = containerRef.current.querySelectorAll('script');
+        scripts.forEach((oldScript) => {
+            const newScript = document.createElement('script');
+            // Attributeları kopyala
+            Array.from(oldScript.attributes).forEach((attr) => {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+            // İnline script içeriğini kopyala
+            if (oldScript.textContent) {
+                newScript.textContent = oldScript.textContent;
+            }
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+    }, [html]);
+
+    return <div ref={containerRef} className="iyzico-form-wrapper" />;
+}
 
 export default function CheckoutPage() {
     const [plans, setPlans] = useState([]);
@@ -124,10 +153,7 @@ export default function CheckoutPage() {
                                 <h3>Güvenli Ödeme - iyzico</h3>
                                 <span className="badge badge-active">🔒 SSL</span>
                             </div>
-                            <div
-                                className="iyzico-form-wrapper"
-                                dangerouslySetInnerHTML={{ __html: checkoutHtml }}
-                            />
+                            <IyzicoForm html={checkoutHtml} />
                         </div>
                     </div>
                 </div>
