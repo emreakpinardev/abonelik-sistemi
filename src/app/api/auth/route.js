@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 /**
  * GET /api/auth
  * Shopify OAuth başlatma
- * Shopify admin'den uygulama açıldığında buraya yönlendirilir
+ * Shopify admin iframe içinde çalıştığı için JavaScript ile yönlendirme yapıyoruz
  */
 export async function GET(request) {
     const url = new URL(request.url);
@@ -14,11 +14,34 @@ export async function GET(request) {
     }
 
     const clientId = process.env.SHOPIFY_CLIENT_ID;
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
+    const redirectUri = `${appUrl}/api/auth/callback`;
     const scopes = 'write_orders,read_orders,read_products,write_customers,read_customers';
 
-    // Shopify OAuth onay sayfasına yönlendir
     const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
-    return NextResponse.redirect(authUrl);
+    // iframe içinde server-side redirect çalışmaz
+    // JavaScript ile parent window'u yönlendiriyoruz
+    return new Response(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Yönlendiriliyor...</title>
+        <script>
+          // iframe içindeyse parent'ı yönlendir
+          if (window.top !== window.self) {
+            window.top.location.href = "${authUrl}";
+          } else {
+            window.location.href = "${authUrl}";
+          }
+        </script>
+      </head>
+      <body style="font-family: system-ui; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0a0a0f; color: #f0f0f5;">
+        <p>Shopify'a yönlendiriliyorsunuz...</p>
+      </body>
+    </html>
+  `, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+    });
 }
