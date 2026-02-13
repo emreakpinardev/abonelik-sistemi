@@ -71,7 +71,13 @@ export default function CheckoutPage() {
                 // iyzico checkout formunu göster
                 setCheckoutHtml(data.checkoutFormContent);
             } else {
-                alert(data.error || 'Bir hata oluştu');
+                const errorMsg = [
+                    data.error,
+                    data.details && `Detay: ${data.details}`,
+                    data.errorCode && `Kod: ${data.errorCode}`,
+                ].filter(Boolean).join('\n');
+                alert(errorMsg || 'Bir hata oluştu');
+                console.error('iyzico full response:', data);
             }
         } catch (err) {
             console.error('Checkout hatası:', err);
