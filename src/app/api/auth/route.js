@@ -30,23 +30,42 @@ export async function GET(request) {
   const state = crypto.randomBytes(16).toString('hex');
   const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}&state=${state}`;
 
-  // Shopify iframe icinde calisiyor - JavaScript ile top window redirect
+  // Otomatik redirect yerine kullanici tiklamasi ile top window redirect.
+  // Bu, bazi tarayicilarda/iframe akisinda ERR_BLOCKED_BY_RESPONSE sorununu azaltir.
   const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Redirecting...</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopify Authorization</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; }
+  .card { max-width: 520px; margin: 40px auto; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; }
+  .btn { background: #111; color: #fff; border: 0; border-radius: 8px; padding: 12px 16px; cursor: pointer; font-weight: 600; }
+  .muted { color: #555; font-size: 14px; line-height: 1.45; }
+  a { color: #111; }
+</style>
 </head>
 <body>
+<div class="card">
+  <h2>Shopify izin onayi gerekiyor</h2>
+  <p class="muted">Tarayici guvenlik kisitlari nedeniyle otomatik yonlendirme kapatildi. Devam etmek icin butona tiklayin.</p>
+  <p><button class="btn" id="go">Shopify iznine git</button></p>
+  <p class="muted">Acilmazsa su linki kullanin:
+    <a href="${authUrl}" target="_top" rel="noopener">Izin ekranini ac</a>
+  </p>
+</div>
 <script>
   var url = "${authUrl}";
-  if (window.top === window.self) {
-    window.location.href = url;
-  } else {
-    window.top.location.href = url;
-  }
+  document.getElementById('go').addEventListener('click', function () {
+    if (window.top && window.top !== window.self) {
+      window.top.location.href = url;
+    } else {
+      window.location.href = url;
+    }
+  });
 </script>
-<noscript><a href="${authUrl}">Click here</a></noscript>
+<noscript><a href="${authUrl}" target="_top" rel="noopener">Click here</a></noscript>
 </body>
 </html>`;
 
