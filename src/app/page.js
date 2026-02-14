@@ -7,12 +7,13 @@ export const dynamic = 'force-dynamic';
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState('products'); // products, subscriptions, settings
+  const [activeTab, setActiveTab] = useState('templates'); // templates, assignments, subscriptions, settings
   const [loading, setLoading] = useState(true);
 
   // Data States
   const [products, setProducts] = useState([]);
-  const [plans, setPlans] = useState([]); // All plans (flat list)
+  const [plans, setPlans] = useState([]); // All plans
+  const [templates, setTemplates] = useState([]); // Template plans
   const [subscriptions, setSubscriptions] = useState([]);
   const [stats, setStats] = useState({});
   const [shopDomain, setShopDomain] = useState('');
@@ -20,12 +21,18 @@ export default function AdminDashboard() {
 
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [newPlanForm, setNewPlanForm] = useState({
+  const [selectedProductIds, setSelectedProductIds] = useState([]); // Multi select for assignment
+
+  // Forms
+  const [newTemplateForm, setNewTemplateForm] = useState({
     name: '',
     description: '',
     interval: 'WEEKLY',
-    intervalCount: 1,
+    intervalCount: 1
+  });
+
+  const [assignForm, setAssignForm] = useState({
+    templateId: '',
     price: ''
   });
 
@@ -41,7 +48,7 @@ export default function AdminDashboard() {
     setLoading(true);
     await Promise.all([
       fetchProducts(),
-      fetchPlans(),
+      fetchPlans(), // Fetches active=true
       fetchSubscriptions(),
       fetchStats(),
       fetchEnv()
@@ -62,7 +69,10 @@ export default function AdminDashboard() {
     try {
       const res = await fetch('/api/plans');
       const data = await res.json();
-      if (data.plans) setPlans(data.plans);
+      if (data.plans) {
+        setPlans(data.plans.filter(p => !p.isTemplate));
+        setTemplates(data.plans.filter(p => p.isTemplate));
+      }
     } catch (e) { console.error(e); }
   }
 
@@ -106,44 +116,85 @@ export default function AdminDashboard() {
 
   // --- ACTIONS ---
 
-  async function handleCreatePlan() {
-    if (!selectedProduct) return alert("Lütfen bir ürün seçin");
-    if (!newPlanForm.price) return alert("Lütfen fiyat girin");
+  // 1. Create Template (Global Type)
+  async function handleCreateTemplate() {
+    if (!newTemplateForm.name) return alert("Şablon adı girin");
 
-    // Auto name if empty
-    const autoName = `${intervalLabel(newPlanForm.interval, newPlanForm.intervalCount)} Abonelik`;
-    const finalName = newPlanForm.name.trim() || autoName;
-    const finalDesc = newPlanForm.description.trim() || (newPlanForm.interval === 'WEEKLY' ? 'Haftalık yenilenir' : 'Aylık yenilenir');
+    // Auto desc if empty
+    const desc = newTemplateForm.description.trim() || `${newTemplateForm.intervalCount} ${newTemplateForm.interval === 'WEEKLY' ? 'Haftada' : 'Ayda'} 1 yenilenir`;
 
     try {
       const res = await fetch('/api/plans', {
-        method: 'POST',
+        method: 'POST', // Logic supports creating single plan
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: finalName,
-          description: finalDesc,
-          price: newPlanForm.price,
-          interval: newPlanForm.interval,
-          intervalCount: newPlanForm.intervalCount,
-          shopifyProductId: selectedProduct.id.toString(),
-          isTemplate: false,
-          groupName: selectedProduct.title
+          name: newTemplateForm.name,
+          description: desc,
+          price: 0, // Template doesn't need price
+          interval: newTemplateForm.interval,
+          intervalCount: newTemplateForm.intervalCount,
+          isTemplate: true,
+          groupName: 'Global', // Simplified grouping
+          shopifyProductId: '' // Not linked to product
         })
       });
       const data = await res.json();
       if (data.success) {
         fetchPlans();
-        setNewPlanForm({ ...newPlanForm, price: '', name: '', description: '' });
+        setNewTemplateForm({ ...newTemplateForm, name: '', description: '' });
       } else {
         alert('Hata: ' + (data.message || data.error));
       }
-    } catch (err) {
-      alert('Hata: ' + err.message);
-    }
+    } catch (err) { alert('Hata: ' + err.message); }
+  }
+
+  // 2. Assign Template to Products (Bulk Create)
+  async function handleAssign() {
+    if (selectedProductIds.length === 0) return alert("En az bir ürün seçin");
+    if (!assignForm.templateId) return alert("Bir şablon seçin");
+    if (!assignForm.price) return alert("Fiyat girin");
+
+    const template = templates.find(t => t.id === assignForm.templateId);
+    if (!template) return;
+
+    try {
+      // Use existing API support for assigning? 
+      // Existing API 'assignTemplate' expects groupName.
+      // But we can just use the SINGLE create loop here or update API.
+      // Update API is cleaner, but let's use client-side loop for flexibility since API 'duplicate check' is robust now.
+      // Wait, API has 'assignTemplate' block which uses 'groupName'. Our templates might not have unique groupNames per template.
+      // Better to call 'create' for each product? Or update API?
+      // Lets call 'create' for each product. It's safe and checks duplicates.
+
+      let successCount = 0;
+      for (const pid of selectedProductIds) {
+        await fetch('/api/plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: template.name,
+            description: template.description,
+            price: assignForm.price,
+            interval: template.interval,
+            intervalCount: template.intervalCount,
+            shopifyProductId: pid,
+            isTemplate: false,
+            groupName: template.name // Group by Template Name useful
+          })
+        });
+        successCount++;
+      }
+
+      alert(`${successCount} ürün için plan oluşturuldu/güncellendi.`);
+      fetchPlans();
+      setSelectedProductIds([]);
+      setAssignForm({ ...assignForm, price: '' });
+
+    } catch (err) { alert('Hata: ' + err.message); }
   }
 
   async function handleDeletePlan(planId) {
-    if (!confirm('Planı silmek istediğinize emin misiniz?')) return;
+    if (!confirm('Silmek istediğinize emin misiniz?')) return;
     try {
       await fetch(`/api/plans?id=${planId}`, { method: 'DELETE' });
       fetchPlans();
@@ -205,7 +256,6 @@ export default function AdminDashboard() {
   }
 
   const filteredProducts = products.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
-  const selectedPlans = selectedProduct ? plans.filter(p => p.shopifyProductId === selectedProduct.id.toString()) : [];
 
   return (
     <div style={st.page}>
@@ -218,123 +268,133 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div style={st.statsGrid}>
-          <StatCard icon="check_circle" label="Aktif" value={stats.byStatus?.ACTIVE || 0} color="#16a34a" />
-          <StatCard icon="payments" label="Gelir" value={`${(stats.totalRevenue || 0).toLocaleString('tr-TR')}₺`} color="#2563eb" />
-          <StatCard icon="inventory_2" label="Ürün" value={products.length} color="#6366f1" />
-          <StatCard icon="layers" label="Plan" value={plans.length} color="#8b5cf6" />
-        </div>
-
         <div style={st.tabs}>
-          <TabBtn active={activeTab === 'products'} icon="inventory" label="Ürünler & Planlar" onClick={() => setActiveTab('products')} />
-          <TabBtn active={activeTab === 'subscriptions'} icon="people" label="Aboneler" onClick={() => setActiveTab('subscriptions')} />
+          <TabBtn active={activeTab === 'templates'} icon="library_add" label="1. Plan Şablonları" onClick={() => setActiveTab('templates')} />
+          <TabBtn active={activeTab === 'assignments'} icon="link" label="2. Ürünlere Tanımla" onClick={() => setActiveTab('assignments')} />
+          <TabBtn active={activeTab === 'subscriptions'} icon="people" label="3. Aboneler" onClick={() => setActiveTab('subscriptions')} />
           <TabBtn active={activeTab === 'settings'} icon="settings" label="Ayarlar" onClick={() => setActiveTab('settings')} />
         </div>
 
-        {activeTab === 'products' && (
-          <div style={{ display: 'flex', gap: 20, height: '600px' }}>
-            <div style={{ width: '30%', ...st.card, display: 'flex', flexDirection: 'column' }}>
-              <h3 style={st.cardTitle}>1. Ürün Seçin</h3>
-              <input style={st.input} placeholder="Ürün Ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-              <div style={{ flex: 1, overflowY: 'auto', marginTop: 10, paddingRight: 5 }}>
-                {loading ? <p>Yükleniyor...</p> : filteredProducts.map(p => (
-                  <div key={p.id}
-                    onClick={() => setSelectedProduct(p)}
-                    style={{
-                      ...st.productItem,
-                      backgroundColor: selectedProduct?.id === p.id ? '#f0fdf4' : 'transparent',
-                      borderColor: selectedProduct?.id === p.id ? '#16a34a' : '#eee'
-                    }}>
-                    {p.image && <img src={p.image} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />}
-                    <div>
-                      <div style={{ fontWeight: 500, fontSize: 13 }}>{p.title}</div>
-                    </div>
-                  </div>
-                ))}
+        {/* TAB 1: TEMPLATES (Create Types) */}
+        {activeTab === 'templates' && (
+          <div style={{ display: 'flex', gap: 20 }}>
+            {/* Left: Create Form */}
+            <div style={{ width: 350, ...st.card }}>
+              <h3 style={st.cardTitle}>Yeni Şablon Oluştur</h3>
+              <div style={{ marginBottom: 15 }}>
+                <label style={st.label}>İsim</label>
+                <input style={st.input} placeholder="Örn: Haftalık Standart" value={newTemplateForm.name} onChange={e => setNewTemplateForm({ ...newTemplateForm, name: e.target.value })} />
               </div>
+              <div style={{ marginBottom: 15 }}>
+                <label style={st.label}>Açıklama</label>
+                <input style={st.input} placeholder="Açıklama" value={newTemplateForm.description} onChange={e => setNewTemplateForm({ ...newTemplateForm, description: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 15 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={st.label}>Sıklık</label>
+                  <select style={st.select} value={newTemplateForm.interval} onChange={e => setNewTemplateForm({ ...newTemplateForm, interval: e.target.value })}>
+                    <option value="WEEKLY">Haftalık</option>
+                    <option value="MONTHLY">Aylık</option>
+                    <option value="QUARTERLY">3 Aylık</option>
+                    <option value="YEARLY">Yıllık</option>
+                  </select>
+                </div>
+                <div style={{ width: 80 }}>
+                  <label style={st.label}>Periyot</label>
+                  <input type="number" min="1" style={st.input} value={newTemplateForm.intervalCount} onChange={e => setNewTemplateForm({ ...newTemplateForm, intervalCount: e.target.value })} />
+                </div>
+              </div>
+              <button onClick={handleCreateTemplate} style={{ ...st.btnPrimary, width: '100%' }}>Şablon Oluştur</button>
+              <p style={{ fontSize: 11, color: '#999', marginTop: 10 }}>Bu şablonu daha sonra ürünlere fiyat girerek atayabilirsiniz.</p>
             </div>
 
-            <div style={{ flex: 1, ...st.card, display: 'flex', flexDirection: 'column' }}>
-              {!selectedProduct ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
-                  Planları yönetmek için soldan bir ürün seçin.
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: 15, alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: 15, marginBottom: 15 }}>
-                    {selectedProduct.image && <img src={selectedProduct.image} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} />}
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: 18 }}>{selectedProduct.title}</h2>
-                      <p style={{ margin: '5px 0 0', fontSize: 13, color: '#666' }}>ID: {selectedProduct.id}</p>
-                    </div>
+            {/* Right: List */}
+            <div style={{ flex: 1, ...st.card }}>
+              <h3 style={st.cardTitle}>Mevcut Şablonlar</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 15 }}>
+                {templates.map(t => (
+                  <div key={t.id} style={{ border: '1px solid #eee', padding: 15, borderRadius: 8, background: '#f9fafb', position: 'relative' }}>
+                    <div style={{ fontWeight: 600 }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: '#666', margin: '5px 0' }}>{intervalLabel(t.interval, t.intervalCount)}</div>
+                    <div style={{ fontSize: 11, color: '#999' }}>{t.description}</div>
+                    <button onClick={() => handleDeletePlan(t.id)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', background: 'none', color: '#ccc', cursor: 'pointer' }}>×</button>
                   </div>
-
-                  <div style={{ background: '#f9fafb', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid #e5e7eb' }}>
-                    <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Yeni Plan Ekle</h4>
-
-                    {/* Row 1: Name & Desc */}
-                    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                      <div style={{ flex: 1 }}>
-                        <label style={st.label}>Plan Adı (Opsiyonel)</label>
-                        <input style={st.input} placeholder="Örn: Haftalık Paket" value={newPlanForm.name} onChange={e => setNewPlanForm({ ...newPlanForm, name: e.target.value })} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={st.label}>Açıklama (Opsiyonel)</label>
-                        <input style={st.input} placeholder="Müşteriye görünecek açıklama" value={newPlanForm.description} onChange={e => setNewPlanForm({ ...newPlanForm, description: e.target.value })} />
-                      </div>
-                    </div>
-
-                    {/* Row 2: Settings */}
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                      <div style={{ width: 100 }}>
-                        <label style={st.label}>Sıklık</label>
-                        <select style={st.select} value={newPlanForm.interval} onChange={e => setNewPlanForm({ ...newPlanForm, interval: e.target.value })}>
-                          <option value="WEEKLY">Haftalık</option>
-                          <option value="MONTHLY">Aylık</option>
-                          <option value="QUARTERLY">3 Aylık</option>
-                          <option value="YEARLY">Yıllık</option>
-                        </select>
-                      </div>
-                      <div style={{ width: 80 }}>
-                        <label style={st.label}>Her</label>
-                        <input type="number" min="1" style={st.input} value={newPlanForm.intervalCount} onChange={e => setNewPlanForm({ ...newPlanForm, intervalCount: e.target.value })} />
-                      </div>
-                      <div style={{ width: 120 }}>
-                        <label style={st.label}>Fiyat (TL)</label>
-                        <input type="number" style={st.input} placeholder="Fiyat" value={newPlanForm.price} onChange={e => setNewPlanForm({ ...newPlanForm, price: e.target.value })} />
-                      </div>
-                      <button onClick={handleCreatePlan} style={st.btnPrimary}>Ekle</button>
-                    </div>
-                  </div>
-
-                  <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Mevcut Abonelik Seçenekleri</h4>
-                  <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {selectedPlans.length === 0 ? (
-                      <p style={{ color: '#999', fontSize: 13 }}>Henüz plan eklenmemiş.</p>
-                    ) : (
-                      <table style={st.table}>
-                        <thead><tr><th style={st.th}>İsim</th><th style={st.th}>Süre</th><th style={st.th}>Fiyat</th><th style={st.th}>İşlem</th></tr></thead>
-                        <tbody>
-                          {selectedPlans.map(p => (
-                            <tr key={p.id}>
-                              <td style={st.td}>{p.name}</td>
-                              <td style={st.td}>{p.intervalCount} {p.interval === 'WEEKLY' ? 'Hafta' : p.interval === 'MONTHLY' ? 'Ay' : p.interval}</td>
-                              <td style={st.td}><b>{p.price} TL</b></td>
-                              <td style={st.td}>
-                                <button onClick={() => handleDeletePlan(p.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </>
-              )}
+                ))}
+                {templates.length === 0 && <p style={{ color: '#999' }}>Henüz şablon yok.</p>}
+              </div>
             </div>
           </div>
         )}
 
+        {/* TAB 2: ASSIGNMENT */}
+        {activeTab === 'assignments' && (
+          <div style={{ display: 'flex', gap: 20, height: 600 }}>
+            {/* Left: Products */}
+            <div style={{ width: '40%', ...st.card, display: 'flex', flexDirection: 'column' }}>
+              <h3 style={st.cardTitle}>1. Ürün Seçin ({selectedProductIds.length})</h3>
+              <input style={st.input} placeholder="Ürün Ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <div style={{ flex: 1, overflowY: 'auto', marginTop: 10 }}>
+                {filteredProducts.map(p => (
+                  <label key={p.id} style={{ display: 'flex', gap: 10, padding: 8, borderBottom: '1px solid #eee', alignItems: 'center', cursor: 'pointer', background: selectedProductIds.includes(p.id.toString()) ? '#f0fdf4' : 'transparent' }}>
+                    <input type="checkbox" checked={selectedProductIds.includes(p.id.toString())} onChange={e => {
+                      const pid = p.id.toString();
+                      if (e.target.checked) setSelectedProductIds([...selectedProductIds, pid]);
+                      else setSelectedProductIds(selectedProductIds.filter(id => id !== pid));
+                    }} />
+                    {p.image && <img src={p.image} style={{ width: 35, height: 35, objectFit: 'cover', borderRadius: 4 }} />}
+                    <span style={{ fontSize: 13 }}>{p.title}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: Assign Form & Product Plans */}
+            <div style={{ flex: 1, ...st.card }}>
+              <h3 style={st.cardTitle}>2. Şablon ve Fiyat Tanımla</h3>
+
+              <div style={{ background: '#f9fafb', padding: 20, borderRadius: 8, border: '1px solid #eee', marginBottom: 20 }}>
+                <div style={{ marginBottom: 15 }}>
+                  <label style={st.label}>Hangi Şablon?</label>
+                  <select style={st.select} value={assignForm.templateId} onChange={e => setAssignForm({ ...assignForm, templateId: e.target.value })}>
+                    <option value="">Seçiniz...</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.name} ({intervalLabel(t.interval, t.intervalCount)})</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 15 }}>
+                  <label style={st.label}>Fiyat (TL)</label>
+                  <input type="number" style={st.input} placeholder="Fiyat girin" value={assignForm.price} onChange={e => setAssignForm({ ...assignForm, price: e.target.value })} />
+                </div>
+                <button onClick={handleAssign} style={{ ...st.btnPrimary, width: '100%' }}>
+                  {selectedProductIds.length} Ürüne Uygula
+                </button>
+              </div>
+
+              <h4 style={{ fontSize: 14, margin: '0 0 10px' }}>Ürünlerdeki Mevcut Planlar</h4>
+              <div style={{ flex: 1, overflowY: 'auto', height: 250, borderTop: '1px solid #eee', paddingTop: 10 }}>
+                {plans.length === 0 ? <p style={{ color: '#999' }}>Henüz ürün planı yok.</p> : (
+                  <table style={st.table}>
+                    <thead><tr><th style={st.th}>Ürün</th><th style={st.th}>Plan</th><th style={st.th}>Fiyat</th><th style={st.th}></th></tr></thead>
+                    <tbody>
+                      {plans.map(p => {
+                        const prod = products.find(pr => pr.id.toString() === p.shopifyProductId);
+                        return (
+                          <tr key={p.id}>
+                            <td style={st.td}>{prod?.title || p.shopifyProductId}</td>
+                            <td style={st.td}>{p.name} <span style={{ color: '#999', fontSize: 11 }}>({intervalLabel(p.interval, p.intervalCount)})</span></td>
+                            <td style={st.td}>{p.price} TL</td>
+                            <td style={st.td}><button onClick={() => handleDeletePlan(p.id)} style={{ color: 'red', border: 'none', background: 'none' }}>Sil</button></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Other Tabs */}
         {activeTab === 'subscriptions' && (
           <div style={st.card}>
             <h2 style={st.sectionTitle}>Abonelik Listesi</h2>
@@ -363,7 +423,10 @@ export default function AdminDashboard() {
               <input value={shopDomain} onChange={e => setShopDomain(e.target.value)} placeholder="magaza.myshopify.com" style={st.input} />
               <button onClick={startOAuth} style={st.btnPrimary}>Shopify Bağlan</button>
             </div>
-            <p style={{ fontSize: 13, color: '#666', marginTop: 10 }}>Widget kurulumu artık otomatik yapılmıyor. Tema entegrasyonu manuel yapıldı.</p>
+            <div style={{ marginTop: 20, fontSize: 13, color: '#666' }}>
+              <p>Uygulama İzinleri: {envStatus?.scopes?.join(', ')}</p>
+              <p>Environment: {envStatus?.SHOPIFY_API_KEY ? 'OK' : 'Missing Keys'}</p>
+            </div>
           </div>
         )}
 
@@ -374,9 +437,6 @@ export default function AdminDashboard() {
 
 function TabBtn({ active, icon, label, onClick }) {
   return <button onClick={onClick} style={active ? st.tabActive : st.tab}><span className="material-icons-outlined" style={{ fontSize: 18, marginRight: 6 }}>{icon}</span>{label}</button>;
-}
-function StatCard({ icon, label, value, color }) {
-  return <div style={{ ...st.statCard, borderTop: `4px solid ${color}` }}><span className="material-icons-outlined" style={{ fontSize: 24, color }}>{icon}</span><div style={{ fontSize: 20, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 12, color: '#999' }}>{label}</div></div>;
 }
 
 const st = {
@@ -393,10 +453,7 @@ const st = {
   tabs: { display: 'flex', gap: 5, marginBottom: 20, background: '#e5e7eb', padding: 4, borderRadius: 8 },
   tab: { flex: 1, padding: '10px', border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   tabActive: { flex: 1, padding: '10px', border: 'none', background: '#fff', cursor: 'pointer', borderRadius: 6, fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 15, marginBottom: 20 },
-  statCard: { background: '#fff', padding: 15, borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
   cardTitle: { margin: '0 0 10px', fontSize: 15, fontWeight: 600, borderBottom: '1px solid #eee', paddingBottom: 10 },
-  productItem: { display: 'flex', gap: 10, padding: 10, borderBottom: '1px solid #eee', alignItems: 'center', cursor: 'pointer', borderLeft: '3px solid transparent' },
   label: { display: 'block', marginBottom: 4, fontSize: 12, fontWeight: 500, color: '#555' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: { textAlign: 'left', padding: 10, background: '#f5f5f5', borderBottom: '1px solid #ddd' },
