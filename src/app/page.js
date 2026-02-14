@@ -168,7 +168,7 @@ export default function AdminDashboard() {
 
       let successCount = 0;
       for (const pid of selectedProductIds) {
-        await fetch('/api/plans', {
+        const res = await fetch('/api/plans', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -182,6 +182,10 @@ export default function AdminDashboard() {
             groupName: template.name // Group by Template Name useful
           })
         });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || `Plan atanamadi (productId: ${pid})`);
+        }
         successCount++;
       }
 

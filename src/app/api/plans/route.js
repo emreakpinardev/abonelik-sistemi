@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { ensurePlanVariant } from '@/lib/shopify-plan-variant';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,14 @@ export async function POST(request) {
                     const key = `${pid}-${t.interval}-${t.intervalCount}`;
 
                     if (!existingSet.has(key)) {
+                        const autoVariantId = await ensurePlanVariant({
+                            productId: pid,
+                            price: t.price,
+                            interval: t.interval,
+                            intervalCount: t.intervalCount,
+                            existingVariantId: t.shopifyVariantId || null,
+                        });
+
                         newPlans.push({
                             name: t.name,
                             description: t.description,
@@ -98,7 +107,7 @@ export async function POST(request) {
                             interval: t.interval,
                             intervalCount: t.intervalCount,
                             shopifyProductId: pid,
-                            shopifyVariantId: t.shopifyVariantId ? String(t.shopifyVariantId) : null,
+                            shopifyVariantId: autoVariantId ? String(autoVariantId) : null,
                             isTemplate: false,
                             groupName: t.groupName,
                             active: true
@@ -135,8 +144,33 @@ export async function POST(request) {
             });
 
             if (existing) {
+                if (!existing.shopifyVariantId) {
+                    const backfilledVariantId = await ensurePlanVariant({
+                        productId: shopifyProductId,
+                        price,
+                        interval: interval || 'MONTHLY',
+                        intervalCount: parseInt(intervalCount || 1),
+                        existingVariantId: null,
+                    });
+                    const updated = await prisma.plan.update({
+                        where: { id: existing.id },
+                        data: { shopifyVariantId: backfilledVariantId ? String(backfilledVariantId) : null },
+                    });
+                    return NextResponse.json({ success: true, plan: updated, message: 'Plan zaten mevcut (variant baglandi)' });
+                }
                 return NextResponse.json({ success: true, plan: existing, message: 'Plan zaten mevcut' });
             }
+        }
+
+        let resolvedVariantId = shopifyVariantId ? String(shopifyVariantId) : null;
+        if (shopifyProductId && !isTemplate) {
+            resolvedVariantId = await ensurePlanVariant({
+                productId: shopifyProductId,
+                price,
+                interval: interval || 'MONTHLY',
+                intervalCount: parseInt(intervalCount || 1),
+                existingVariantId: resolvedVariantId,
+            });
         }
 
         const plan = await prisma.plan.create({
@@ -147,7 +181,7 @@ export async function POST(request) {
                 interval: interval || 'MONTHLY',
                 intervalCount: parseInt(intervalCount || 1),
                 shopifyProductId,
-                shopifyVariantId: shopifyVariantId ? String(shopifyVariantId) : null,
+                shopifyVariantId: resolvedVariantId,
                 isTemplate: !!isTemplate,
                 groupName,
                 active: true

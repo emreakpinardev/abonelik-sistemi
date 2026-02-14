@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { ensurePlanVariant } from '@/lib/shopify-plan-variant';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,17 @@ export async function POST(request) {
             }, { status: 400 });
         }
 
+        let resolvedVariantId = shopifyVariantId ? String(shopifyVariantId) : null;
+        if (shopifyProductId) {
+            resolvedVariantId = await ensurePlanVariant({
+                productId: shopifyProductId,
+                price,
+                interval,
+                intervalCount: parseInt(intervalCount),
+                existingVariantId: resolvedVariantId,
+            });
+        }
+
         const plan = await prisma.plan.create({
             data: {
                 name,
@@ -38,7 +50,7 @@ export async function POST(request) {
                 intervalCount: parseInt(intervalCount),
                 trialDays: parseInt(trialDays),
                 shopifyProductId,
-                shopifyVariantId,
+                shopifyVariantId: resolvedVariantId,
                 active: true,
             },
         });
