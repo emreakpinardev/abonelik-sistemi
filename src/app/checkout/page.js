@@ -16,8 +16,79 @@ function IyzicoForm({ html }) {
             if (oldScript.textContent) newScript.textContent = oldScript.textContent;
             oldScript.parentNode.replaceChild(newScript, oldScript);
         });
+
+        // iyzico popup'unu inline'a cevirmek icin global CSS enjekte et
+        setTimeout(() => {
+            const styleId = 'iyzico-inline-override';
+            if (!document.getElementById(styleId)) {
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.textContent = `
+                    /* iyzico popup overlay/backdrop gizle */
+                    body > div[style*="position: fixed"][style*="z-index"],
+                    body > div[style*="position:fixed"][style*="z-index"],
+                    div[id*="iyzipay"][style*="position: fixed"],
+                    div[id*="iyzipay"][style*="position:fixed"] {
+                        position: relative !important;
+                        z-index: 1 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        top: auto !important;
+                        left: auto !important;
+                        right: auto !important;
+                        bottom: auto !important;
+                        background: transparent !important;
+                    }
+                    /* iyzico modal/dialog */
+                    div[id*="iyzipay"] > div[style*="position: absolute"],
+                    div[id*="iyzipay"] > div[style*="position:absolute"],
+                    div[id*="iyzipay"] > div[style*="position: relative"] {
+                        position: relative !important;
+                        transform: none !important;
+                        max-width: 100% !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        box-shadow: 0 1px 8px rgba(0,0,0,0.08) !important;
+                        border-radius: 12px !important;
+                    }
+                    /* Body scroll kilidi kaldir */
+                    body[style*="overflow: hidden"],
+                    body[style*="overflow:hidden"] {
+                        overflow: auto !important;
+                        position: static !important;
+                    }
+                    /* Close (X) butonu gizle */
+                    div[id*="iyzipay"] button[style*="position: absolute"][style*="right"],
+                    div[id*="iyzipay"] [class*="close"],
+                    div[id*="iyzipay"] [aria-label*="close"],
+                    div[id*="iyzipay"] [aria-label*="Close"] {
+                        display: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // iyzico elementlerini container'a tasi
+            const movePopupInline = () => {
+                const container = containerRef.current;
+                if (!container) return;
+                // iyzico popup div'ini bul ve container'a tasi
+                const iyziElements = document.querySelectorAll('div[id*="iyzipay-checkout-form"]');
+                iyziElements.forEach(el => {
+                    if (!container.contains(el)) {
+                        container.appendChild(el);
+                    }
+                });
+            };
+
+            movePopupInline();
+            // Biraz gecikmeyle tekrar dene (iyzico async yuklenebilir)
+            setTimeout(movePopupInline, 500);
+            setTimeout(movePopupInline, 1500);
+            setTimeout(movePopupInline, 3000);
+        }, 100);
     }, [html]);
-    return <div ref={containerRef} />;
+    return <div ref={containerRef} className="co-iyzico-container" />;
 }
 
 function Icon({ name, size = 20, className = '' }) {
@@ -35,7 +106,7 @@ export default function CheckoutPage() {
     const [subscriptionFrequency, setSubscriptionFrequency] = useState('');
     const [subscriptionFrequencyLabel, setSubscriptionFrequencyLabel] = useState('');
     const [discountCode, setDiscountCode] = useState('');
-    const [shopLogo, setShopLogo] = useState('');
+    const [shopLogo, setShopLogo] = useState('/api/shopify/logo');
     const [formData, setFormData] = useState({
         firstName: '', lastName: '', email: '', phone: '',
         city: '', state: '', zipCode: '', address: '',
@@ -197,7 +268,7 @@ export default function CheckoutPage() {
                 <div className="co-page">
                     <div className="co-wrap">
                         <div className="co-nav">
-                            {shopLogo && <img src={shopLogo} alt="Logo" className="co-logo" />}
+                            <img src={shopLogo} alt="Logo" className="co-logo" onError={(e) => { e.target.style.display = 'none'; }} />
                             <span className="co-breadcrumb">Sepet › Adres › <strong>Ödeme</strong></span>
                         </div>
 
@@ -263,7 +334,7 @@ export default function CheckoutPage() {
             <div className="co-page">
                 <div className="co-wrap">
                     <div className="co-nav">
-                        {shopLogo && <img src={shopLogo} alt="Logo" className="co-logo" />}
+                        <img src={shopLogo} alt="Logo" className="co-logo" onError={(e) => { e.target.style.display = 'none'; }} />
                         <span className="co-breadcrumb">Sepet › <strong>Adres</strong> › Ödeme</span>
                     </div>
 
@@ -370,7 +441,7 @@ export default function CheckoutPage() {
                                             <span>Kredi / Banka Kartı</span>
                                         </div>
                                         <div className="co-pay-logos">
-                                            <img src="https://www.iyzico.com/assets/images/content/logo.svg" alt="iyzico" height="20" />
+                                            <span className="co-iyzico-logo-text">iyzico</span>
                                         </div>
                                     </div>
                                 </div>
@@ -564,10 +635,26 @@ const css = `
 
 .co-empty { text-align: center; padding: 40px 0; color: #999; }
 
-/* iyzico inline form */
-.co-iyzico-inline { margin-bottom: 20px; }
+/* iyzico logo text */
+.co-iyzico-logo-text { font-size: 16px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; padding: 4px 10px; background: #f0f0f3; border-radius: 6px; }
+
+/* iyzico inline form — popup override */
+.co-iyzico-inline { margin-bottom: 20px; position: relative; }
 .co-iyzico-sub { color: #999; font-size: 14px; margin-bottom: 24px; margin-top: -12px; }
 .co-secure-footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; display: flex; align-items: center; justify-content: center; gap: 4px; }
+
+/* iyzico popup -> inline override */
+.co-iyzico-inline #iyzipay-checkout-form { position: relative !important; width: 100% !important; height: auto !important; min-height: 400px !important; }
+.co-iyzico-inline #iyzipay-checkout-form > div { position: relative !important; width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 400px !important; margin: 0 !important; transform: none !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; box-shadow: none !important; border-radius: 12px !important; overflow: visible !important; }
+.co-iyzico-inline #iyzipay-checkout-form iframe { position: relative !important; width: 100% !important; max-width: 100% !important; min-height: 500px !important; border: none !important; border-radius: 12px !important; }
+/* Gizle: popup overlay arkaplanı */
+.co-iyzico-inline .iyzico-overlay,
+.co-iyzico-inline [class*="overlay"],
+.co-iyzico-inline [class*="backdrop"] { display: none !important; }
+/* Popup close button gizle */
+.co-iyzico-inline [class*="close"] { display: none !important; }
+/* Body scroll kilitleme override */
+body.iyzico-popup-active { overflow: auto !important; position: static !important; }
 
 .co-loading { text-align: center; padding: 100px 20px; }
 .co-spinner { width: 36px; height: 36px; border: 3px solid #eee; border-top-color: #1a1a2e; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
