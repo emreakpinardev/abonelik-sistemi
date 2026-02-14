@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+
+function isValidShopDomain(shop) {
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop || '');
+}
 
 /**
  * GET /api/auth
@@ -11,12 +16,16 @@ export async function GET(request) {
   if (!shop) {
     return NextResponse.json({ error: 'Shop parameter required' }, { status: 400 });
   }
+  if (!isValidShopDomain(shop)) {
+    return NextResponse.json({ error: 'Invalid shop domain' }, { status: 400 });
+  }
 
   const clientId = process.env.SHOPIFY_CLIENT_ID;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
   const redirectUri = encodeURIComponent(`${appUrl}/api/auth/callback`);
   const scopes = 'write_orders,read_orders,read_products,write_customers,read_customers,read_script_tags,write_script_tags';
-  const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}&state=${state}`;
 
   // Shopify iframe icinde calisiyor - JavaScript ile top window redirect
   const html = `<!DOCTYPE html>
@@ -38,11 +47,19 @@ export async function GET(request) {
 </body>
 </html>`;
 
-  return new Response(html, {
+  const response = new NextResponse(html, {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Security-Policy': "frame-ancestors https://*.myshopify.com https://admin.shopify.com;",
     },
   });
+  response.cookies.set('shopify_oauth_state', state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 300,
+  });
+  return response;
 }

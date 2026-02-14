@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,33 @@ export async function GET(request) {
     const code = url.searchParams.get('code');
     const shop = url.searchParams.get('shop');
     const hmac = url.searchParams.get('hmac');
+    const state = url.searchParams.get('state');
+    const cookieState = request.cookies.get('shopify_oauth_state')?.value;
 
     if (!code || !shop) {
       return NextResponse.json({ error: 'Eksik parametreler' }, { status: 400 });
+    }
+    if (!state || !cookieState || state !== cookieState) {
+      return NextResponse.json({ error: 'State dogrulamasi basarisiz' }, { status: 400 });
+    }
+
+    const params = new URLSearchParams(url.search);
+    params.delete('hmac');
+    params.delete('signature');
+    const message = Array.from(params.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+    const generatedHmac = crypto
+      .createHmac('sha256', process.env.SHOPIFY_CLIENT_SECRET)
+      .update(message)
+      .digest('hex');
+    const isValidHmac =
+      hmac &&
+      generatedHmac.length === hmac.length &&
+      crypto.timingSafeEqual(Buffer.from(generatedHmac), Buffer.from(hmac));
+    if (!isValidHmac) {
+      return NextResponse.json({ error: 'HMAC dogrulamasi basarisiz' }, { status: 400 });
     }
 
     // Code'u access token'a çevir
@@ -133,7 +158,15 @@ export async function GET(request) {
     const apiKey = process.env.SHOPIFY_CLIENT_ID;
     const adminAppUrl = `https://${shop}/admin/apps/${apiKey}`;
 
-    return NextResponse.redirect(adminAppUrl);
+    const response = NextResponse.redirect(adminAppUrl);
+    response.cookies.set('shopify_oauth_state', '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+      maxAge: 0,
+    });
+    return response;
 
   } catch (error) {
     console.error('OAuth callback error:', error);
