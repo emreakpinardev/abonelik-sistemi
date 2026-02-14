@@ -13,8 +13,35 @@ function buildSku({ productId, interval, intervalCount, price }) {
   return `SUB-${productId}-${interval}-${intervalCount}-${cents}`;
 }
 
-function buildOptionValue({ interval, intervalCount, price }) {
+function buildOptionValue({ interval, intervalCount }) {
   return `Subscription ${intervalCount} ${String(interval).toLowerCase()}`;
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findMatchingVariant(variants, { sku, optionValue }) {
+  const normalizedSku = normalizeText(sku);
+  const normalizedOptionValue = normalizeText(optionValue);
+
+  const bySku = variants.find((v) => normalizeText(v.sku) === normalizedSku);
+  if (bySku) return bySku;
+
+  const byOption1 = variants.find((v) => normalizeText(v.option1) === normalizedOptionValue);
+  if (byOption1) return byOption1;
+
+  // Some stores use multi-option titles like "Subscription 2 weekly / Default"
+  return variants.find((v) => normalizeText(v.title).startsWith(normalizedOptionValue));
+}
+
+async function getAllProductVariants(productId) {
+  try {
+    const data = await shopifyREST(`/products/${productId}/variants.json?limit=250`);
+    return Array.isArray(data?.variants) ? data.variants : [];
+  } catch (_) {
+    return [];
+  }
 }
 
 export async function ensurePlanVariant({
@@ -28,7 +55,7 @@ export async function ensurePlanVariant({
 
   const normalizedPrice = toPriceString(price);
   const sku = buildSku({ productId, interval, intervalCount, price: normalizedPrice });
-  const optionValue = buildOptionValue({ interval, intervalCount, price: normalizedPrice });
+  const optionValue = buildOptionValue({ interval, intervalCount });
 
   if (existingVariantId) {
     try {
@@ -53,9 +80,11 @@ export async function ensurePlanVariant({
   }
 
   const variants = product.variants || [];
-  const matched = variants.find((v) => String(v.sku || '') === sku);
+  const extraVariants = await getAllProductVariants(productId);
+  const allVariants = [...variants, ...extraVariants];
+  const matched = findMatchingVariant(allVariants, { sku, optionValue });
   if (matched) {
-    if (String(matched.price) !== normalizedPrice) {
+    if (String(matched.price) !== normalizedPrice || String(matched.sku || '') !== sku) {
       await shopifyREST(`/variants/${matched.id}.json`, 'PUT', {
         variant: {
           id: matched.id,
@@ -84,10 +113,46 @@ export async function ensurePlanVariant({
     if (product.options.length >= 3) variantPayload.option3 = 'Default';
   }
 
-  const created = await shopifyREST(`/products/${productId}/variants.json`, 'POST', { variant: variantPayload });
-  const createdId = created?.variant?.id;
-  if (!createdId) {
-    throw new Error('Shopify variant olusturulamadi');
+  try {
+    const created = await shopifyREST(`/products/${productId}/variants.json`, 'POST', { variant: variantPayload });
+    const createdId = created?.variant?.id;
+    if (!createdId) {
+      throw new Error('Shopify variant olusturulamadi');
+    }
+    return String(createdId);
+  } catch (error) {
+    const message = String(error?.message || '');
+    const isDuplicateVariantError =
+      message.includes('Shopify REST error: 422') && message.toLowerCase().includes('already exists');
+
+    if (!isDuplicateVariantError) {
+      throw error;
+    }
+
+    // A variant with the same option value already exists (often after soft-delete/archive flows).
+    // Re-fetch product and bind the existing variant instead of failing the request.
+    const productAfterCreateError = await getProduct(productId);
+    const variantsAfterCreateError = productAfterCreateError?.variants || [];
+    const extraAfterCreateError = await getAllProductVariants(productId);
+    const existing = findMatchingVariant(
+      [...variantsAfterCreateError, ...extraAfterCreateError],
+      { sku, optionValue }
+    );
+
+    if (!existing?.id) {
+      throw error;
+    }
+
+    await shopifyREST(`/variants/${existing.id}.json`, 'PUT', {
+      variant: {
+        id: existing.id,
+        price: normalizedPrice,
+        sku,
+        inventory_policy: 'continue',
+        option1: optionValue,
+      },
+    });
+
+    return String(existing.id);
   }
-  return String(createdId);
 }
