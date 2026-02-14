@@ -41,6 +41,7 @@ export default function AdminDashboard() {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
     const oauth = params.get('oauth');
+    const shopFromQuery = params.get('shop');
     if (tab && ['templates', 'assignments', 'subscriptions', 'settings'].includes(tab)) {
       setActiveTab(tab);
     }
@@ -48,6 +49,15 @@ export default function AdminDashboard() {
       sessionStorage.setItem('admin_auth', 'true');
       setIsAuthenticated(true);
       alert('Shopify baglantisi tamamlandi. Token bilgisi Ayarlar alaninda gosterilecek.');
+      loadData();
+      return;
+    }
+    if (shopFromQuery) {
+      // Shopify admin icinden acilis: login ekranina takilmadan Ayarlar sekmesine gec.
+      setShopDomain(shopFromQuery);
+      setActiveTab('settings');
+      sessionStorage.setItem('admin_auth', 'true');
+      setIsAuthenticated(true);
       loadData();
       return;
     }
