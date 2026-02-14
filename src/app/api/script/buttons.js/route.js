@@ -265,7 +265,24 @@ export async function GET() {
                     subscription_frequency: frequency,
                     subscription_frequency_label: frequencyLabel,
                     shop_url: window.location.origin,
-                    shop_name: window.Shopify?.shop || window.location.hostname
+                    shop_name: window.Shopify?.shop || window.location.hostname,
+                    // Musteri adres bilgileri (Shopify customer objesinden)
+                    customer: window.__st?.cid ? {
+                        city: '',
+                        province: '',
+                    } : null,
+                    // Site logosu
+                    shop_logo: (function() {
+                        var logo = document.querySelector('.header__heading-logo, .site-header__logo-image, header img[src*="logo"], .header-logo img, .logo img, a.header__logo img');
+                        if (logo) {
+                            var src = logo.src || logo.getAttribute('data-src') || '';
+                            if (src && !src.startsWith('http')) src = 'https:' + src;
+                            return src;
+                        }
+                        return '';
+                    })(),
+                    // Kargo bilgileri (Shopify'dan)
+                    requires_shipping: cart.requires_shipping
                 };
 
                 var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
