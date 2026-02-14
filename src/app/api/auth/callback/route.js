@@ -156,7 +156,7 @@ export async function GET(request) {
     // Kurulum tamamlandi, dogrudan uygulama URL'ine don.
     // Admin app path'e tekrar zorlama bazi magazalarda redirect loop uretiyor.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
-    const appEntryUrl = `${appUrl}/?shop=${encodeURIComponent(shop)}`;
+    const appEntryUrl = `${appUrl}/?shop=${encodeURIComponent(shop)}&tab=settings&oauth=success`;
 
     const response = NextResponse.redirect(appEntryUrl);
     response.cookies.set('shopify_oauth_state', '', {

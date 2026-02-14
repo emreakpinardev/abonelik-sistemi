@@ -38,6 +38,12 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['templates', 'assignments', 'subscriptions', 'settings'].includes(tab)) {
+      setActiveTab(tab);
+    }
+
     const auth = sessionStorage.getItem('admin_auth');
     if (auth === 'true') {
       setIsAuthenticated(true);
