@@ -98,6 +98,7 @@ export async function POST(request) {
                             interval: t.interval,
                             intervalCount: t.intervalCount,
                             shopifyProductId: pid,
+                            shopifyVariantId: t.shopifyVariantId ? String(t.shopifyVariantId) : null,
                             isTemplate: false,
                             groupName: t.groupName,
                             active: true
@@ -120,7 +121,7 @@ export async function POST(request) {
         }
 
         // SENARYO 2: Tekil Plan Oluştur (veya Şablon Varyasyonu Ekle)
-        const { name, description, price, interval, intervalCount, shopifyProductId, isTemplate, groupName } = body;
+        const { name, description, price, interval, intervalCount, shopifyProductId, shopifyVariantId, isTemplate, groupName } = body;
 
         // Duplicate Check for Single Plan
         if (shopifyProductId && !isTemplate) {
@@ -146,6 +147,7 @@ export async function POST(request) {
                 interval: interval || 'MONTHLY',
                 intervalCount: parseInt(intervalCount || 1),
                 shopifyProductId,
+                shopifyVariantId: shopifyVariantId ? String(shopifyVariantId) : null,
                 isTemplate: !!isTemplate,
                 groupName,
                 active: true
