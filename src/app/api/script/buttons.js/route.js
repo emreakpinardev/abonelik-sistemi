@@ -201,6 +201,44 @@ export async function GET() {
                 var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
                 var frequency = sessionStorage.getItem('subscription_frequency') || '';
                 var frequencyLabel = sessionStorage.getItem('subscription_frequency_label') || '';
+                var derivedFrequencyCode = '';
+                var derivedFrequencyLabel = '';
+
+                var setDerivedFrequency = function(count, unit) {
+                    var n = parseInt(count, 10);
+                    if (!n || n < 1) return false;
+                    var u = String(unit || '').toLowerCase();
+                    if (u.indexOf('week') !== -1 || u.indexOf('hafta') !== -1 || u.indexOf('weekly') !== -1) {
+                        derivedFrequencyCode = n + '_week';
+                        derivedFrequencyLabel = n + ' haftada bir';
+                        return true;
+                    }
+                    if (u.indexOf('month') !== -1 || u.indexOf('ay') !== -1 || u.indexOf('monthly') !== -1) {
+                        derivedFrequencyCode = n + '_month';
+                        derivedFrequencyLabel = n + ' ayda bir';
+                        return true;
+                    }
+                    return false;
+                };
+
+                var tryDeriveFrequencyFromText = function(txt) {
+                    if (!txt) return false;
+                    var t = String(txt).toLowerCase();
+
+                    var m1 = t.match(/(\d+)\s*(hafta|week|weeks|ay|month|months)/i);
+                    if (m1 && setDerivedFrequency(m1[1], m1[2])) return true;
+
+                    var m2 = t.match(/(weekly|monthly)[\\s_-]*(\d+)/i);
+                    if (m2 && setDerivedFrequency(m2[2], m2[1])) return true;
+
+                    var m3 = t.match(/(\d+)[\\s_-]*(weekly|monthly)/i);
+                    if (m3 && setDerivedFrequency(m3[1], m3[2])) return true;
+
+                    if (t.indexOf('haftada bir') !== -1 || t.indexOf('every week') !== -1) return setDerivedFrequency(1, 'week');
+                    if (t.indexOf('ayda bir') !== -1 || t.indexOf('every month') !== -1) return setDerivedFrequency(1, 'month');
+
+                    return false;
+                };
 
                 console.log('[SKYCROPS] 🛒 Checkout - Tip:', purchaseType, '| Frekans:', frequencyLabel || 'yok');
 
@@ -243,6 +281,26 @@ export async function GET() {
                                     frequencyLabel = freq + ' ayda bir';
                                 }
                             }
+
+                            // Property textlerden frekans yakala (örn: "4 Haftada 1")
+                            if (!derivedFrequencyCode) {
+                                try {
+                                    Object.keys(sp).forEach(function(k) {
+                                        if (derivedFrequencyCode) return;
+                                        var v = sp[k];
+                                        if (v == null) return;
+                                        tryDeriveFrequencyFromText(String(k) + ' ' + String(v));
+                                    });
+                                } catch (_) {}
+                            }
+                        }
+
+                        if (!derivedFrequencyCode && item.selling_plan_allocation && item.selling_plan_allocation.selling_plan) {
+                            tryDeriveFrequencyFromText(item.selling_plan_allocation.selling_plan.name || '');
+                        }
+
+                        if (!derivedFrequencyCode && item.sku) {
+                            tryDeriveFrequencyFromText(String(item.sku).replace(/[_-]/g, ' '));
                         }
 
                         return {
@@ -270,6 +328,14 @@ export async function GET() {
                 var effectiveTotal = mappedItems.reduce(function(sum, item) {
                     return sum + (parseFloat(item.line_price) || 0);
                 }, 0);
+
+                // Cart item'lerden türetilen frekans, session'daki eski değeri override etsin
+                if (derivedFrequencyCode) {
+                    frequency = derivedFrequencyCode;
+                    frequencyLabel = derivedFrequencyLabel || frequencyLabel;
+                    sessionStorage.setItem('subscription_frequency', frequency);
+                    if (frequencyLabel) sessionStorage.setItem('subscription_frequency_label', frequencyLabel);
+                }
 
                 var cartData = {
                     items: mappedItems,

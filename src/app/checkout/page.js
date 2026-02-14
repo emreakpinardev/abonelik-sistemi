@@ -131,8 +131,8 @@ export default function CheckoutPage() {
     function prettySellingPlanName(rawName) {
         const raw = String(rawName || '').trim();
         if (!raw) return '';
-        if (subscriptionFrequencyLabel) return `Abonelik • ${subscriptionFrequencyLabel}`;
-        if (subscriptionFrequency) return `Abonelik • ${getFrequencyText()}`;
+        if (subscriptionFrequencyLabel) return `Abonelik - ${subscriptionFrequencyLabel}`;
+        if (subscriptionFrequency) return `Abonelik - ${getFrequencyText()}`;
         return raw;
     }
 
