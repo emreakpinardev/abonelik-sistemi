@@ -2,211 +2,148 @@
 
 import { useState, useEffect } from 'react';
 
+export const dynamic = 'force-dynamic';
+
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [activeTab, setActiveTab] = useState('templates');
+  const [activeTab, setActiveTab] = useState('products'); // products, subscriptions, settings
+  const [loading, setLoading] = useState(true);
 
-  // Data
-  const [plans, setPlans] = useState([]);
-  const [templates, setTemplates] = useState([]); // isTemplate: true
-  const [products, setProducts] = useState([]); // Shopify Products
+  // Data States
+  const [products, setProducts] = useState([]);
+  const [plans, setPlans] = useState([]); // All plans (flat list)
   const [subscriptions, setSubscriptions] = useState([]);
   const [stats, setStats] = useState({});
-  const [envStatus, setEnvStatus] = useState(null);
-
-  // UI State
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('ALL');
-  const [showTemplateForm, setShowTemplateForm] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProductIds, setSelectedProductIds] = useState([]);
-  const [selectedTemplateGroup, setSelectedTemplateGroup] = useState('');
-
-  // Forms
-  const [templateForm, setTemplateForm] = useState({
-    groupName: '',
-    description: '',
-    variations: [{ interval: 'MONTHLY', intervalCount: 1, price: '' }]
-  });
-
   const [shopDomain, setShopDomain] = useState('');
+  const [envStatus, setEnvStatus] = useState({});
 
-  // Initial Auth Check
+  // UI States
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(null); // For plan editing
+  const [newPlanForm, setNewPlanForm] = useState({ interval: 'WEEKLY', intervalCount: 1, price: '' });
+
   useEffect(() => {
-    const saved = sessionStorage.getItem('admin_auth');
-    if (saved === 'true') {
+    const auth = sessionStorage.getItem('admin_auth');
+    if (auth === 'true') {
       setIsAuthenticated(true);
+      loadData();
     }
   }, []);
 
-  // Fetch Data on Auth
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    fetchTemplates();
-    fetchPlans();
-    fetchSubscriptions();
-    fetchEnvStatus();
-  }, [isAuthenticated]);
-
-  // Fetch Products when tab changes or search
-  useEffect(() => {
-    if (activeTab === 'assignments') {
-      fetchProducts(searchTerm);
-    }
-  }, [activeTab, searchTerm]);
-
-  // --- API CALLS ---
-  async function handleLogin(e) {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem('admin_auth', 'true');
-      } else {
-        setAuthError('Şifre yanlış');
-      }
-    } catch {
-      setAuthError('Bağlantı hatası');
-    }
+  async function loadData() {
+    setLoading(true);
+    await Promise.all([
+      fetchProducts(),
+      fetchPlans(),
+      fetchSubscriptions(),
+      fetchStats(),
+      fetchEnv()
+    ]);
+    setLoading(false);
   }
 
-  async function fetchTemplates() {
+  // --- API CALLS ---
+  async function fetchProducts() {
     try {
-      const res = await fetch('/api/plans?isTemplate=true');
+      const res = await fetch('/api/shopify/products');
       const data = await res.json();
-      setTemplates(data.plans || []);
-    } catch (err) { console.error(err); }
+      if (data.products) setProducts(data.products);
+    } catch (e) { console.error(e); }
   }
 
   async function fetchPlans() {
     try {
-      const res = await fetch('/api/plans?isTemplate=false'); // Normal planlar (optional)
+      const res = await fetch('/api/plans');
       const data = await res.json();
-      setPlans(data.plans || []);
-    } catch (err) { console.error(err); }
-  }
-
-  async function fetchProducts(search = '') {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/shopify/products?search=${encodeURIComponent(search)}`);
-      const data = await res.json();
-      setProducts(data.products || []);
-    } catch (err) { console.error(err); }
-    setLoading(false);
+      if (data.plans) setPlans(data.plans);
+    } catch (e) { console.error(e); }
   }
 
   async function fetchSubscriptions() {
-    setLoading(true);
     try {
-      const res = await fetch(`/api/admin/subscriptions?status=${filter}`);
+      const res = await fetch('/api/subscriptions');
       const data = await res.json();
-      setSubscriptions(data.subscriptions || []);
-      setStats(data.stats || {});
-    } catch (err) { console.error(err); }
-    setLoading(false);
+      if (data.subscriptions) setSubscriptions(data.subscriptions);
+    } catch (e) { console.error(e); }
   }
 
-
-
-  async function fetchEnvStatus() {
+  async function fetchStats() {
     try {
-      const res = await fetch('/api/settings/status');
-      if (res.ok) setEnvStatus(await res.json());
-    } catch { }
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      if (data) setStats(data);
+    } catch (e) { console.error(e); }
   }
+
+  async function fetchEnv() {
+    try {
+      const res = await fetch('/api/settings/env');
+      const data = await res.json();
+      if (data) {
+        setShopDomain(data.SHOPIFY_STORE_DOMAIN || '');
+        setEnvStatus(data);
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (password === 'admin123') {
+      sessionStorage.setItem('admin_auth', 'true');
+      setIsAuthenticated(true);
+      loadData();
+    } else {
+      alert('Hatalı şifre');
+    }
+  };
 
   // --- ACTIONS ---
-  async function handleCreateTemplate() {
-    if (!templateForm.groupName || templateForm.variations.some(v => !v.price)) {
-      alert('Lütfen grup adı ve tüm fiyatları girin');
-      return;
-    }
 
-    // Her varyasyon için ayrı plan oluştur
-    try {
-      // Backend should support batch creation or loop here.
-      // Since our API currently creates single plan, we loop here?
-      // No, let's assume we updated API to handle batch or loop here.
-      // API currently handles Create Single. 
-      // Let's loop here for simplicity to avoid huge API refactor right now or update API to accept array?
-      // I prefer updating API to accept batch but I already implemented POST. 
-      // Current POST implementation supports single creation.
-      // I will loop here. It's safer.
+  async function handleCreatePlan() {
+    if (!selectedProduct) return alert("Lütfen bir ürün seçin");
+    if (!newPlanForm.price) return alert("Lütfen fiyat girin");
 
-      for (const v of templateForm.variations) {
-        await fetch('/api/plans', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: `${templateForm.groupName} - ${intervalLabel(v.interval, v.intervalCount)}`, // Or simplified name
-            description: templateForm.description,
-            price: v.price,
-            interval: v.interval,
-            intervalCount: v.intervalCount,
-            isTemplate: true,
-            groupName: templateForm.groupName
-          })
-        });
-      }
-
-      setShowTemplateForm(false);
-      setTemplateForm({ groupName: '', description: '', variations: [{ interval: 'MONTHLY', intervalCount: 1, price: '' }] });
-      fetchTemplates();
-      alert('Şablon oluşturuldu!');
-    } catch (err) {
-      alert('Hata: ' + err.message);
-    }
-  }
-
-  async function handleAssignTemplate() {
-    if (selectedProductIds.length === 0 || !selectedTemplateGroup) {
-      alert('Lütfen ürün ve şablon seçin');
-      return;
-    }
+    const planName = `${intervalLabel(newPlanForm.interval, newPlanForm.intervalCount)} Abonelik`; // Auto name
 
     try {
       const res = await fetch('/api/plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assignTemplate: true,
-          groupName: selectedTemplateGroup,
-          productIds: selectedProductIds
+          name: planName,
+          description: newPlanForm.interval === 'WEEKLY' ? 'Haftalık yenilenir' : 'Aylık yenilenir',
+          price: newPlanForm.price,
+          interval: newPlanForm.interval,
+          intervalCount: newPlanForm.intervalCount,
+          shopifyProductId: selectedProduct.id.toString(), // String ID
+          isTemplate: false,
+          groupName: selectedProduct.title
         })
       });
       const data = await res.json();
       if (data.success) {
-        alert(`${data.count} plan varyasyonu oluşturuldu!`);
-        setSelectedProductIds([]);
-        fetchPlans(); // Refresh actual plans
+        // alert('Plan eklendi!');
+        fetchPlans(); // Refresh
+        setNewPlanForm({ ...newPlanForm, price: '' }); // Reset price only
       } else {
-        alert('Hata: ' + data.error);
+        alert('Hata: ' + (data.message || data.error));
       }
     } catch (err) {
       alert('Hata: ' + err.message);
     }
   }
 
-  async function handleDeletePlan(plan) {
-    if (!confirm('Silmek istediğinize emin misiniz?')) return;
+  async function handleDeletePlan(planId) {
+    if (!confirm('Planı silmek istediğinize emin misiniz?')) return;
     try {
-      await fetch(`/api/plans?id=${plan.id}`, { method: 'DELETE' });
-      fetchTemplates();
+      await fetch(`/api/plans?id=${planId}`, { method: 'DELETE' });
       fetchPlans();
     } catch (err) { alert(err.message); }
   }
 
   async function handleCancelSubscription(id) {
-    if (!confirm('Bu aboneliği iptal etmek istediğinize emin misiniz?')) return;
+    if (!confirm('Aboneliği iptal etmek istediğinize emin misiniz?')) return;
     try {
       const res = await fetch('/api/subscription/cancel', {
         method: 'POST',
@@ -221,19 +158,17 @@ export default function AdminDashboard() {
     }
   }
 
-  // --- HELPERS ---
-  const groupedTemplates = templates.reduce((acc, t) => {
-    const g = t.groupName || 'Genel';
-    if (!acc[g]) acc[g] = [];
-    acc[g].push(t);
-    return acc;
-  }, {});
+  function startOAuth() {
+    if (!shopDomain.trim()) { alert('Mağaza domainini girin'); return; }
+    const domain = shopDomain.includes('.myshopify.com') ? shopDomain.trim() : shopDomain.trim() + '.myshopify.com';
+    window.open('/api/auth?shop=' + encodeURIComponent(domain), '_blank');
+  }
 
+  // --- HELPERS ---
   function intervalLabel(interval, count) {
-    const map = { WEEKLY: 'Hafta', MONTHLY: 'Ay', QUARTERLY: '3 Ay', YEARLY: 'Yıl' };
-    const unit = map[interval] || 'Ay';
-    if (count && count > 1 && (interval === 'WEEKLY' || interval === 'MONTHLY')) return `${count} ${unit}`;
-    return unit;
+    const map = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda' };
+    const unit = map[interval] || 'Ayda';
+    return `${count} ${unit} 1`; // "1 Ayda 1", "2 Haftada 1"
   }
 
   function statusBadge(status) {
@@ -241,17 +176,9 @@ export default function AdminDashboard() {
       ACTIVE: { bg: '#dcfce7', color: '#166534', text: 'Aktif' },
       PENDING: { bg: '#fef3c7', color: '#92400e', text: 'Bekliyor' },
       CANCELLED: { bg: '#fee2e2', color: '#991b1b', text: 'İptal' },
-      PAYMENT_FAILED: { bg: '#fee2e2', color: '#991b1b', text: 'Ödeme Hatası' },
-      PAUSED: { bg: '#fef3c7', color: '#92400e', text: 'Duraklatıldı' },
     };
     const c = map[status] || { bg: '#f1f5f9', color: '#475569', text: status };
     return <span style={{ background: c.bg, color: c.color, padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>{c.text}</span>;
-  }
-
-  function startOAuth() {
-    if (!shopDomain.trim()) { alert('Mağaza domainini girin'); return; }
-    const domain = shopDomain.includes('.myshopify.com') ? shopDomain.trim() : shopDomain.trim() + '.myshopify.com';
-    window.open('/api/auth?shop=' + encodeURIComponent(domain), '_blank');
   }
 
   // --- RENDER ---
@@ -259,11 +186,9 @@ export default function AdminDashboard() {
     return (
       <div style={st.page}>
         <div style={st.loginBox}>
-          <span className="material-icons-outlined" style={{ fontSize: 40, color: '#16a34a', marginBottom: 12 }}>admin_panel_settings</span>
-          <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 4px' }}>Yönetici Girişi</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 10px' }}>Yönetici Girişi</h2>
           <form onSubmit={handleLogin}>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Şifre" style={st.input} autoFocus />
-            {authError && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 10 }}>{authError}</p>}
             <button type="submit" style={st.btnPrimary}>Giriş Yap</button>
           </form>
         </div>
@@ -271,12 +196,18 @@ export default function AdminDashboard() {
     );
   }
 
+  // Filtered Products
+  const filteredProducts = products.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  // Selected Product's Plans
+  const selectedPlans = selectedProduct ? plans.filter(p => p.shopifyProductId === selectedProduct.id.toString()) : [];
+
   return (
     <div style={st.page}>
       <div style={st.container}>
         {/* Header */}
         <div style={st.header}>
-          <h1 style={st.title}><span className="material-icons-outlined" style={{ fontSize: 28, marginRight: 8, color: '#16a34a' }}>dashboard</span> Abonelik Yönetimi</h1>
+          <h1 style={st.title}>Abonelik Yönetimi</h1>
           <div style={{ display: 'flex', gap: 10 }}>
             <a href="https://admin.shopify.com" target="_blank" style={st.btnSmall}>Shopify Admin</a>
             <button onClick={() => { sessionStorage.removeItem('admin_auth'); setIsAuthenticated(false); }} style={st.btnSmall}>Çıkış</button>
@@ -285,185 +216,137 @@ export default function AdminDashboard() {
 
         {/* Stats */}
         <div style={st.statsGrid}>
-          <StatCard icon="check_circle" label="Aktif Abonelik" value={stats.byStatus?.ACTIVE || 0} color="#16a34a" />
-          <StatCard icon="pending" label="Bekleyen" value={stats.byStatus?.PENDING || 0} color="#f59e0b" />
-          <StatCard icon="cancel" label="İptal" value={stats.byStatus?.CANCELLED || 0} color="#ef4444" />
-          <StatCard icon="payments" label="Toplam Gelir" value={`${(stats.totalRevenue || 0).toLocaleString('tr-TR')}₺`} color="#2563eb" />
+          <StatCard icon="check_circle" label="Aktif" value={stats.byStatus?.ACTIVE || 0} color="#16a34a" />
+          <StatCard icon="payments" label="Gelir" value={`${(stats.totalRevenue || 0).toLocaleString('tr-TR')}₺`} color="#2563eb" />
+          <StatCard icon="inventory_2" label="Ürün" value={products.length} color="#6366f1" />
+          <StatCard icon="layers" label="Plan" value={plans.length} color="#8b5cf6" />
         </div>
 
         {/* Tabs */}
         <div style={st.tabs}>
-          <TabBtn active={activeTab === 'templates'} icon="library_add" label="1. Şablonlar" onClick={() => setActiveTab('templates')} />
-          <TabBtn active={activeTab === 'assignments'} icon="link" label="2. Ürün Tanımlama" onClick={() => setActiveTab('assignments')} />
-          <TabBtn active={activeTab === 'subscriptions'} icon="people" label="3. Abonelikler" onClick={() => setActiveTab('subscriptions')} />
+          <TabBtn active={activeTab === 'products'} icon="inventory" label="Ürünler & Planlar" onClick={() => setActiveTab('products')} />
+          <TabBtn active={activeTab === 'subscriptions'} icon="people" label="Aboneler" onClick={() => setActiveTab('subscriptions')} />
           <TabBtn active={activeTab === 'settings'} icon="settings" label="Ayarlar" onClick={() => setActiveTab('settings')} />
         </div>
 
-        {/* TAB 1: TEMPLATES */}
-        {activeTab === 'templates' && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 style={st.sectionTitle}>Abonelik Şablonları</h2>
-              <button onClick={() => setShowTemplateForm(true)} style={st.btnPrimary}>+ Yeni Şablon Grubu</button>
-            </div>
-
-            {showTemplateForm && (
-              <div style={st.card}>
-                <h3>Yeni Şablon Grubu Oluştur</h3>
-                <div style={st.formGroup}>
-                  <label style={st.label}>Grup Adı (Örn: Standart Paket)</label>
-                  <input value={templateForm.groupName} onChange={e => setTemplateForm({ ...templateForm, groupName: e.target.value })} style={st.input} placeholder="Paket Adı" />
-                </div>
-                <div style={st.formGroup}>
-                  <label style={st.label}>Açıklama (Opsiyonel)</label>
-                  <input value={templateForm.description} onChange={e => setTemplateForm({ ...templateForm, description: e.target.value })} style={st.input} placeholder="Müşterilere görünecek açıklama" />
-                </div>
-
-                <h4 style={{ fontSize: 14, margin: '15px 0 10px' }}>Varyasyonlar (Süre & Fiyat)</h4>
-                {templateForm.variations.map((v, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-                    <select value={v.interval} onChange={e => {
-                      const newVars = [...templateForm.variations];
-                      newVars[idx].interval = e.target.value;
-                      setTemplateForm({ ...templateForm, variations: newVars });
-                    }} style={st.select}>
-                      <option value="WEEKLY">Haftalık</option>
-                      <option value="MONTHLY">Aylık</option>
-                      <option value="QUARTERLY">3 Aylık</option>
-                      <option value="YEARLY">Yıllık</option>
-                    </select>
-                    <input type="number" value={v.intervalCount} onChange={e => {
-                      const newVars = [...templateForm.variations];
-                      newVars[idx].intervalCount = parseInt(e.target.value);
-                      setTemplateForm({ ...templateForm, variations: newVars });
-                    }} style={{ ...st.input, width: 80 }} min={1} />
-
-                    <input type="number" value={v.price} onChange={e => {
-                      const newVars = [...templateForm.variations];
-                      newVars[idx].price = e.target.value;
-                      setTemplateForm({ ...templateForm, variations: newVars });
-                    }} style={{ ...st.input, width: 120 }} placeholder="Fiyat (TL)" />
-
-                    {idx > 0 && <button onClick={() => {
-                      const newVars = templateForm.variations.filter((_, i) => i !== idx);
-                      setTemplateForm({ ...templateForm, variations: newVars });
-                    }} style={{ color: 'red', cursor: 'pointer', border: 'none', background: 'none' }}>Sil</button>}
-                  </div>
-                ))}
-                <button onClick={() => setTemplateForm({ ...templateForm, variations: [...templateForm.variations, { interval: 'MONTHLY', intervalCount: 1, price: '' }] })}
-                  style={{ ...st.btnSmall, marginTop: 5 }}>+ Varyasyon Ekle</button>
-
-                <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
-                  <button onClick={handleCreateTemplate} style={st.btnPrimary}>Oluştur</button>
-                  <button onClick={() => setShowTemplateForm(false)} style={st.btnSecondary}>İptal</button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
-              {Object.keys(groupedTemplates).map(groupName => (
-                <div key={groupName} style={st.card}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 600, color: '#16a34a' }}>{groupName}</h3>
-                  <div style={{ marginBottom: 10 }}>
-                    {groupedTemplates[groupName].map(t => (
-                      <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '5px 0', fontSize: 13 }}>
-                        <span>{intervalLabel(t.interval, t.intervalCount)}</span>
-                        <span style={{ fontWeight: 600 }}>{t.price} ₺</span>
-                        <button onClick={() => handleDeletePlan(t)} style={{ border: 'none', background: 'none', color: '#999', cursor: 'pointer' }}>x</button>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 10 }}>
-                    Bu şablona bağlı {plans.filter(p => !p.isTemplate && p.groupName === groupName).length} ürün planı var.
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* TAB 2: ASSIGNMENTS */}
-        {activeTab === 'assignments' && (
-          <div style={{ display: 'flex', gap: 20 }}>
-            {/* Left: Products */}
-            <div style={{ flex: 1, ...st.card }}>
+        {/* TAB 1: PRODUCTS & PLANS */}
+        {activeTab === 'products' && (
+          <div style={{ display: 'flex', gap: 20, height: '600px' }}>
+            {/* LEFT: Product List */}
+            <div style={{ width: '30%', ...st.card, display: 'flex', flexDirection: 'column' }}>
               <h3 style={st.cardTitle}>1. Ürün Seçin</h3>
               <input style={st.input} placeholder="Ürün Ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-
-              <div style={{ maxHeight: 400, overflowY: 'auto', marginTop: 10 }}>
-                {loading ? <p>Yükleniyor...</p> : products.map(p => (
-                  <div key={p.id} style={{ display: 'flex', gap: 10, padding: 10, borderBottom: '1px solid #eee', alignItems: 'center' }}>
-                    <input type="checkbox"
-                      checked={selectedProductIds.includes(p.id.toString())}
-                      onChange={e => {
-                        const pid = p.id.toString();
-                        if (e.target.checked) setSelectedProductIds([...selectedProductIds, pid]);
-                        else setSelectedProductIds(selectedProductIds.filter(id => id !== pid));
-                      }}
-                    />
+              <div style={{ flex: 1, overflowY: 'auto', marginTop: 10, paddingRight: 5 }}>
+                {loading ? <p>Yükleniyor...</p> : filteredProducts.map(p => (
+                  <div key={p.id}
+                    onClick={() => setSelectedProduct(p)}
+                    style={{
+                      ...st.productItem,
+                      backgroundColor: selectedProduct?.id === p.id ? '#f0fdf4' : 'transparent',
+                      borderColor: selectedProduct?.id === p.id ? '#16a34a' : '#eee'
+                    }}>
                     {p.image && <img src={p.image} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />}
                     <div>
-                      <div style={{ fontWeight: 500, fontSize: 14 }}>{p.title}</div>
-                      <div style={{ fontSize: 12, color: '#999' }}>ID: {p.id}</div>
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>{p.title}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Right: Template Select */}
-            <div style={{ width: 300, ...st.card, height: 'fit-content' }}>
-              <h3 style={st.cardTitle}>2. Şablon Seçin</h3>
-              <select value={selectedTemplateGroup} onChange={e => setSelectedTemplateGroup(e.target.value)} style={st.select}>
-                <option value="">Seçiniz...</option>
-                {Object.keys(groupedTemplates).map(g => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
+            {/* RIGHT: Plan MAnager */}
+            <div style={{ flex: 1, ...st.card, display: 'flex', flexDirection: 'column' }}>
+              {!selectedProduct ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+                  Planları yönetmek için soldan bir ürün seçin.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 15, alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: 15, marginBottom: 15 }}>
+                    {selectedProduct.image && <img src={selectedProduct.image} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} />}
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: 18 }}>{selectedProduct.title}</h2>
+                      <p style={{ margin: '5px 0 0', fontSize: 13, color: '#666' }}>ID: {selectedProduct.id}</p>
+                    </div>
+                  </div>
 
-              <div style={{ margin: '20px 0' }}>
-                <div style={{ fontSize: 13, marginBottom: 5 }}>Seçili Ürün Sayısı: <b>{selectedProductIds.length}</b></div>
-                <div style={{ fontSize: 13 }}>Seçili Şablon: <b>{selectedTemplateGroup || '-'}</b></div>
-              </div>
+                  {/* Add New Plan Form */}
+                  <div style={{ background: '#f9fafb', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid #e5e7eb' }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Yeni Plan Ekle</h4>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                      <div style={{ width: 100 }}>
+                        <label style={st.label}>Sıklık</label>
+                        <select style={st.select} value={newPlanForm.interval} onChange={e => setNewPlanForm({ ...newPlanForm, interval: e.target.value })}>
+                          <option value="WEEKLY">Haftalık</option>
+                          <option value="MONTHLY">Aylık</option>
+                          <option value="QUARTERLY">3 Aylık</option>
+                          <option value="YEARLY">Yıllık</option>
+                        </select>
+                      </div>
+                      <div style={{ width: 80 }}>
+                        <label style={st.label}>Her</label>
+                        <input type="number" min="1" style={st.input} value={newPlanForm.intervalCount} onChange={e => setNewPlanForm({ ...newPlanForm, intervalCount: e.target.value })} />
+                      </div>
+                      <div style={{ width: 120 }}>
+                        <label style={st.label}>Fiyat (TL)</label>
+                        <input type="number" style={st.input} placeholder="Fiyat" value={newPlanForm.price} onChange={e => setNewPlanForm({ ...newPlanForm, price: e.target.value })} />
+                      </div>
+                      <button onClick={handleCreatePlan} style={st.btnPrimary}>Ekle</button>
+                    </div>
+                  </div>
 
-              <button onClick={handleAssignTemplate} style={{ ...st.btnPrimary, width: '100%', justifyContent: 'center' }}>Uygula & Planları Oluştur</button>
-              <p style={{ fontSize: 11, color: '#999', marginTop: 10, lineHeight: 1.4 }}>
-                Seçilen ürünler için, seçilen şablonun tüm varyasyonları (süre/fiyat) kopyalanıp plan olarak oluşturulacaktır.
-              </p>
+                  {/* Existing Plans */}
+                  <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Mevcut Abonelik Seçenekleri</h4>
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                    {selectedPlans.length === 0 ? (
+                      <p style={{ color: '#999', fontSize: 13 }}>Henüz plan eklenmemiş.</p>
+                    ) : (
+                      <table style={st.table}>
+                        <thead><tr><th style={st.th}>İsim</th><th style={st.th}>Süre</th><th style={st.th}>Fiyat</th><th style={st.th}>İşlem</th></tr></thead>
+                        <tbody>
+                          {selectedPlans.map(p => (
+                            <tr key={p.id}>
+                              <td style={st.td}>{p.name}</td>
+                              <td style={st.td}>{p.intervalCount} {p.interval === 'WEEKLY' ? 'Hafta' : p.interval === 'MONTHLY' ? 'Ay' : p.interval}</td>
+                              <td style={st.td}><b>{p.price} TL</b></td>
+                              <td style={st.td}>
+                                <button onClick={() => handleDeletePlan(p.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: SUBSCRIPTIONS */}
+        {/* TAB 2: SUBSCRIPTIONS */}
         {activeTab === 'subscriptions' && (
-          <>
-            <h2 style={st.sectionTitle}>Abonelikler</h2>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-              {['ALL', 'ACTIVE', 'PENDING', 'CANCELLED'].map(s => (
-                <button key={s} onClick={() => setFilter(s)} style={filter === s ? st.filterActive : st.filterBtn}>
-                  {s === 'ALL' ? 'Tümü' : s}
-                </button>
-              ))}
-            </div>
+          <div style={st.card}>
+            <h2 style={st.sectionTitle}>Abonelik Listesi</h2>
             <table style={st.table}>
-              <thead><tr><th style={st.th}>Müşteri</th><th style={st.th}>Plan</th><th style={st.th}>Durum</th><th style={st.th}>İşlem</th></tr></thead>
+              <thead><tr><th style={st.th}>Müşteri</th><th style={st.th}>Ürün/Plan</th><th style={st.th}>Durum</th><th style={st.th}>İşlem</th></tr></thead>
               <tbody>
                 {subscriptions.map(sub => (
                   <tr key={sub.id}>
                     <td style={st.td}>{sub.customerName}<br /><span style={{ fontSize: 11, color: '#999' }}>{sub.customerEmail}</span></td>
-                    <td style={st.td}>{sub.plan?.name}<br /><span style={{ fontSize: 11, color: 'green' }}>{sub.plan?.price} TL</span></td>
+                    <td style={st.td}>{sub.plan?.name || '-'}<br /><span style={{ fontSize: 11, color: '#666' }}>{sub.shopifyProductId}</span></td>
                     <td style={st.td}>{statusBadge(sub.status)}</td>
                     <td style={st.td}>
-                      {sub.status === 'ACTIVE' && <button onClick={() => handleCancelSubscription(sub.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>İptal</button>}
+                      {sub.status === 'ACTIVE' && <button onClick={() => handleCancelSubscription(sub.id)} style={{ color: 'red', cursor: 'pointer', border: 'none', background: 'none' }}>İptal</button>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </>
+          </div>
         )}
 
-        {/* TAB 4: SETTINGS */}
+        {/* TAB 3: SETTINGS */}
         {activeTab === 'settings' && (
           <div style={st.card}>
             <h3>Ayarlar</h3>
@@ -471,33 +354,10 @@ export default function AdminDashboard() {
               <input value={shopDomain} onChange={e => setShopDomain(e.target.value)} placeholder="magaza.myshopify.com" style={st.input} />
               <button onClick={startOAuth} style={st.btnPrimary}>Shopify Bağlan</button>
             </div>
-            <div style={{ marginTop: 20 }}>
-              <h4>Sistem Durumu</h4>
-
-              {envStatus && envStatus.scopes && (
-                <div style={{ marginBottom: 10, padding: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6 }}>
-                  <h5 style={{ margin: '0 0 5px', fontSize: 13, color: '#166534' }}>Aktif İzinler (Scopes)</h5>
-                  <div style={{ fontSize: 12, color: '#166534', display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {envStatus.scopes.map(s => (
-                      <span key={s} style={{ background: '#fff', padding: '2px 6px', borderRadius: 4, border: '1px solid #bbf7d0' }}>{s}</span>
-                    ))}
-                  </div>
-                  {!envStatus.scopes.includes('write_script_tags') && (
-                    <div style={{ marginTop: 8, fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
-                      ⚠️ EKSİK İZİN: write_script_tags (Widget yüklemek için gerekli)
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <pre style={{ fontSize: 12, background: '#f5f5f5', padding: 10, borderRadius: 5 }}>
-                {JSON.stringify(envStatus, null, 2)}
-              </pre>
-            </div>
-
-
+            <p style={{ fontSize: 13, color: '#666', marginTop: 10 }}>Widget kurulumu artık otomatik yapılmıyor. Tema entegrasyonu manuel yapıldı.</p>
           </div>
         )}
+
       </div>
     </div>
   );
@@ -513,27 +373,24 @@ function StatCard({ icon, label, value, color }) {
 
 const st = {
   page: { minHeight: '100vh', background: '#f9fafb', fontFamily: 'sans-serif', color: '#333' },
-  container: { maxWidth: 1000, margin: '0 auto', padding: 20 },
+  container: { maxWidth: 1200, margin: '0 auto', padding: 20 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', margin: 0 },
+  title: { fontSize: 24, fontWeight: 700, margin: 0 },
   loginBox: { maxWidth: 350, margin: '100px auto', background: '#fff', padding: 30, borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center' },
   card: { background: '#fff', padding: 20, borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: 20, border: '1px solid #eee' },
-  input: { width: '100%', padding: 10, border: '1px solid #ddd', borderRadius: 6, marginBottom: 10, boxSizing: 'border-box' },
-  select: { padding: 10, border: '1px solid #ddd', borderRadius: 6 },
-  btnPrimary: { background: '#16a34a', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center' },
-  btnSecondary: { background: '#eee', color: '#333', border: 'none', padding: '10px 16px', borderRadius: 6, cursor: 'pointer' },
+  input: { width: '100%', padding: 10, border: '1px solid #ddd', borderRadius: 6, marginBottom: 0, boxSizing: 'border-box', height: 40 },
+  select: { padding: 0, paddingLeft: 10, border: '1px solid #ddd', borderRadius: 6, height: 40, width: '100%' },
+  btnPrimary: { background: '#16a34a', color: '#fff', border: 'none', padding: '0 20px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, height: 40 },
   btnSmall: { background: '#fff', border: '1px solid #ddd', padding: '5px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12 },
   tabs: { display: 'flex', gap: 5, marginBottom: 20, background: '#e5e7eb', padding: 4, borderRadius: 8 },
   tab: { flex: 1, padding: '10px', border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   tabActive: { flex: 1, padding: '10px', border: 'none', background: '#fff', cursor: 'pointer', borderRadius: 6, fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' },
   statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 15, marginBottom: 20 },
   statCard: { background: '#fff', padding: 15, borderRadius: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  cardTitle: { margin: '0 0 15px', fontSize: 16, fontWeight: 600, borderBottom: '1px solid #eee', paddingBottom: 10 },
-  formGroup: { marginBottom: 15 },
-  label: { display: 'block', marginBottom: 5, fontSize: 13, fontWeight: 500, color: '#555' },
+  cardTitle: { margin: '0 0 10px', fontSize: 15, fontWeight: 600, borderBottom: '1px solid #eee', paddingBottom: 10 },
+  productItem: { display: 'flex', gap: 10, padding: 10, borderBottom: '1px solid #eee', alignItems: 'center', cursor: 'pointer', borderLeft: '3px solid transparent' },
+  label: { display: 'block', marginBottom: 4, fontSize: 12, fontWeight: 500, color: '#555' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: { textAlign: 'left', padding: 10, background: '#f5f5f5', borderBottom: '1px solid #ddd' },
   td: { padding: 10, borderBottom: '1px solid #eee' },
-  filterBtn: { padding: '5px 10px', border: '1px solid #ddd', background: '#fff', borderRadius: 20, cursor: 'pointer', fontSize: 12 },
-  filterActive: { padding: '5px 10px', border: '1px solid #16a34a', background: '#16a34a', color: '#fff', borderRadius: 20, cursor: 'pointer', fontSize: 12 },
 };

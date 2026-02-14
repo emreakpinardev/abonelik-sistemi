@@ -60,20 +60,41 @@ export async function POST(request) {
                 return NextResponse.json({ error: 'Şablon bulunamadı' }, { status: 404 });
             }
 
+            // Mevcut planları kontrol et (Multiple Product Check)
+            const existingPlans = await prisma.plan.findMany({
+                where: {
+                    shopifyProductId: { in: productIds },
+                    active: true
+                },
+                select: { shopifyProductId: true, interval: true, intervalCount: true }
+            });
+
+            const existingSet = new Set(
+                existingPlans.map(p => `${p.shopifyProductId}-${p.interval}-${p.intervalCount}`)
+            );
+
             const newPlans = [];
             for (const pid of productIds) {
                 for (const t of templates) {
-                    newPlans.push({
-                        name: t.name,
-                        description: t.description,
-                        price: t.price,
-                        interval: t.interval,
-                        intervalCount: t.intervalCount,
-                        shopifyProductId: pid,
-                        isTemplate: false,
-                        groupName: t.groupName,
-                        active: true
-                    });
+                    // Unique Key: ProductID - Interval - Count
+                    // Fiyat değişmiş olabilir ama aynı interval varsa duplicate sayıyoruz
+                    const key = `${pid}-${t.interval}-${t.intervalCount}`;
+
+                    if (!existingSet.has(key)) {
+                        newPlans.push({
+                            name: t.name,
+                            description: t.description,
+                            price: t.price,
+                            interval: t.interval,
+                            intervalCount: t.intervalCount,
+                            shopifyProductId: pid,
+                            isTemplate: false,
+                            groupName: t.groupName,
+                            active: true
+                        });
+                        // Add to set to prevent duplicate within same batch if templates have dupes?
+                        existingSet.add(key);
+                    }
                 }
             }
 
@@ -81,11 +102,31 @@ export async function POST(request) {
                 await prisma.plan.createMany({ data: newPlans });
             }
 
-            return NextResponse.json({ success: true, count: newPlans.length });
+            return NextResponse.json({
+                success: true,
+                count: newPlans.length,
+                message: newPlans.length === 0 ? 'Tüm planlar zaten mevcut.' : `${newPlans.length} yeni plan oluşturuldu.`
+            });
         }
 
         // SENARYO 2: Tekil Plan Oluştur (veya Şablon Varyasyonu Ekle)
         const { name, description, price, interval, intervalCount, shopifyProductId, isTemplate, groupName } = body;
+
+        // Duplicate Check for Single Plan
+        if (shopifyProductId && !isTemplate) {
+            const existing = await prisma.plan.findFirst({
+                where: {
+                    shopifyProductId,
+                    interval: interval || 'MONTHLY',
+                    intervalCount: parseInt(intervalCount || 1),
+                    active: true
+                }
+            });
+
+            if (existing) {
+                return NextResponse.json({ success: true, plan: existing, message: 'Plan zaten mevcut' });
+            }
+        }
 
         const plan = await prisma.plan.create({
             data: {
