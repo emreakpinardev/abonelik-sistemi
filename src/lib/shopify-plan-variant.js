@@ -14,8 +14,7 @@ function buildSku({ productId, interval, intervalCount, price }) {
 }
 
 function buildOptionValue({ interval, intervalCount, price }) {
-  const cents = Math.round(Number(price) * 100);
-  return `SUB-${interval}-${intervalCount}-${cents}`;
+  return `Subscription ${intervalCount} ${String(interval).toLowerCase()}`;
 }
 
 export async function ensurePlanVariant({
@@ -29,6 +28,7 @@ export async function ensurePlanVariant({
 
   const normalizedPrice = toPriceString(price);
   const sku = buildSku({ productId, interval, intervalCount, price: normalizedPrice });
+  const optionValue = buildOptionValue({ interval, intervalCount, price: normalizedPrice });
 
   if (existingVariantId) {
     try {
@@ -37,6 +37,8 @@ export async function ensurePlanVariant({
           id: Number(existingVariantId),
           price: normalizedPrice,
           sku,
+          inventory_policy: 'continue',
+          option1: optionValue,
         },
       });
       return String(existingVariantId);
@@ -59,6 +61,8 @@ export async function ensurePlanVariant({
           id: matched.id,
           price: normalizedPrice,
           sku,
+          inventory_policy: 'continue',
+          option1: optionValue,
         },
       });
     }
@@ -71,10 +75,11 @@ export async function ensurePlanVariant({
     sku,
     taxable: true,
     requires_shipping: true,
+    inventory_policy: 'continue',
   };
 
   if (product.options && product.options.length >= 1) {
-    variantPayload.option1 = buildOptionValue({ interval, intervalCount, price: normalizedPrice });
+    variantPayload.option1 = optionValue;
     if (product.options.length >= 2) variantPayload.option2 = 'Default';
     if (product.options.length >= 3) variantPayload.option3 = 'Default';
   }
