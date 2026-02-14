@@ -22,19 +22,6 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
-    // Shopify Admin iframe kontrolü (Cookie engeline takılmamak için)
-    const params = new URLSearchParams(window.location.search);
-    const shop = params.get('shop');
-    const host = params.get('host');
-
-    if (shop || host) {
-      setIsAuthenticated(true);
-      // Session storage denemesi (calisirsa guzel, calismazsa sorun degil)
-      try { sessionStorage.setItem('admin_auth', 'true'); } catch (e) { }
-      return;
-    }
-
-    // Normal tarayici girisi
     const saved = sessionStorage.getItem('admin_auth');
     if (saved === 'true') {
       setIsAuthenticated(true);
