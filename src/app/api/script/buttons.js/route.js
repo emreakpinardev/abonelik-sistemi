@@ -13,38 +13,67 @@ export async function GET() {
 
     // ===== URUN SAYFASINDA SATIN ALMA TIPINI YAKALA =====
     function trackPurchaseType() {
-        // Seal veya diger plugin'lerin "Tek seferlik" / "Abonelik" butonlarini yakalabody
-        var purchaseButtons = document.querySelectorAll('[data-selling-plan], .subscription-widget button, .purchase-option, .selling-plan-widget button, .seal-subscription-widget button');
-        
-        // Genel buton yalama - "Tek seferlik" veya "Abonelik" yazan butonlari bul
+        // HER TIKLAMADA kontrol et - en genis yakalama
         document.addEventListener('click', function(e) {
-            var btn = e.target.closest('button, [role="button"], label, input[type="radio"]');
-            if (!btn) return;
-
-            var text = (btn.textContent || btn.innerText || '').trim().toLowerCase();
-            var value = (btn.value || '').toLowerCase();
-
-            if (text.includes('tek seferlik') || text.includes('one-time') || text.includes('one time') || value === 'one-time') {
-                sessionStorage.setItem('purchase_type', 'single');
-                console.log('[SKYCROPS] Satin alma tipi: Tek Seferlik');
-            } else if (text.includes('abonelik') || text.includes('subscription') || text.includes('subscribe') || value === 'subscription') {
-                sessionStorage.setItem('purchase_type', 'subscription');
-                console.log('[SKYCROPS] Satin alma tipi: Abonelik');
+            var el = e.target;
+            // Tiklanan element veya parent'larinden birinin text'ini kontrol et
+            var checkEls = [el];
+            var parent = el.parentElement;
+            for (var i = 0; i < 5 && parent; i++) {
+                checkEls.push(parent);
+                parent = parent.parentElement;
             }
-        });
 
-        // Varsayilan olarak secili olan butonu kontrol et
-        setTimeout(function() {
-            var activeBtn = document.querySelector('.purchase-option.active, .selling-plan-widget .active, [data-selling-plan].selected, .subscription-widget .active');
-            if (activeBtn) {
-                var text = (activeBtn.textContent || '').toLowerCase();
-                if (text.includes('abonelik') || text.includes('subscription')) {
-                    sessionStorage.setItem('purchase_type', 'subscription');
-                } else {
+            for (var j = 0; j < checkEls.length; j++) {
+                var text = (checkEls[j].textContent || '').trim().toLowerCase();
+                // Sadece kisa text'leri kontrol et (uzun paragraflar degil)
+                if (text.length > 50) continue;
+
+                if (text === 'tek seferlik' || text === 'one-time' || text === 'one time' || text.includes('tek seferlik')) {
                     sessionStorage.setItem('purchase_type', 'single');
+                    console.log('[SKYCROPS] ✅ Satin alma tipi: TEK SEFERLIK');
+                    break;
+                } else if (text === 'abonelik' || text === 'subscription' || text === 'subscribe' || text.includes('abonelik')) {
+                    sessionStorage.setItem('purchase_type', 'subscription');
+                    console.log('[SKYCROPS] ✅ Satin alma tipi: ABONELIK');
+                    break;
                 }
             }
-        }, 1000);
+        }, true);
+
+        // Sayfa yuklendiginde mevcut secimi kontrol et
+        setTimeout(function() {
+            detectCurrentSelection();
+        }, 1500);
+
+        // Her 2 saniyede kontrol et (SPA sayfalar icin)
+        setInterval(function() {
+            detectCurrentSelection();
+        }, 2000);
+    }
+
+    function detectCurrentSelection() {
+        // Aktif/secili buton veya etiketi bul
+        var allElements = document.querySelectorAll('.active, .selected, [aria-selected="true"], [aria-checked="true"], [data-active], .is-active, input:checked');
+        for (var i = 0; i < allElements.length; i++) {
+            var text = (allElements[i].textContent || '').trim().toLowerCase();
+            if (text.length > 50) continue;
+
+            if (text.includes('abonelik') || text.includes('subscription')) {
+                if (sessionStorage.getItem('purchase_type') !== 'subscription') {
+                    sessionStorage.setItem('purchase_type', 'subscription');
+                    console.log('[SKYCROPS] 🔍 Otomatik tespit: ABONELIK');
+                }
+                return;
+            }
+            if (text.includes('tek seferlik') || text.includes('one-time')) {
+                if (sessionStorage.getItem('purchase_type') !== 'single') {
+                    sessionStorage.setItem('purchase_type', 'single');
+                    console.log('[SKYCROPS] 🔍 Otomatik tespit: TEK SEFERLIK');
+                }
+                return;
+            }
+        }
     }
 
     // ===== CHECKOUT BUTONLARINI YAKALA =====
@@ -77,8 +106,11 @@ export async function GET() {
         }, true);
     }
 
-    // ===== SEPET BILGILERINI AL VE CHECKOUT'A YONLENDIR =====
+    // ===== REDIRECT ONCESI SON KONTROL =====
     function redirectToOurCheckout() {
+        // Redirect oncesi sayfadaki secimi bir kez daha kontrol et
+        detectCurrentSelection();
+
         fetch('/cart.js')
             .then(function(res) { return res.json(); })
             .then(function(cart) {
@@ -87,13 +119,26 @@ export async function GET() {
                     return;
                 }
 
-                // Secili satin alma tipi
                 var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
+                console.log('[SKYCROPS] 🛒 Checkout yonlendirmesi - Tip:', purchaseType);
 
                 var cartData = {
                     items: cart.items.map(function(item) {
                         var img = item.image || '';
                         if (img && !img.startsWith('http')) img = 'https:' + img;
+
+                        // Selling plan varsa abonelik
+                        var hasSP = !!item.selling_plan_allocation;
+                        // Properties'de abonelik bilgisi varsa
+                        var hasProp = item.properties && (
+                            item.properties._subscription ||
+                            item.properties.shipping_interval_unit_type ||
+                            item.properties._seal_subscription
+                        );
+
+                        if (hasSP || hasProp) {
+                            purchaseType = 'subscription';
+                        }
 
                         return {
                             id: item.product_id,
@@ -109,6 +154,7 @@ export async function GET() {
                             product_type: item.product_type || '',
                             vendor: item.vendor || '',
                             requires_shipping: item.requires_shipping,
+                            properties: item.properties || {},
                             selling_plan: item.selling_plan_allocation ? {
                                 id: item.selling_plan_allocation.selling_plan.id,
                                 name: item.selling_plan_allocation.selling_plan.name,
@@ -124,7 +170,7 @@ export async function GET() {
                     shop_name: window.Shopify?.shop || window.location.hostname
                 };
 
-                console.log('[SKYCROPS] Checkout verisi:', cartData);
+                console.log('[SKYCROPS] 📦 Gonderilen veri:', JSON.stringify(cartData));
 
                 var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
                 window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);
@@ -135,7 +181,6 @@ export async function GET() {
             });
     }
 
-    // Basla
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             trackPurchaseType();
@@ -151,7 +196,7 @@ export async function GET() {
     return new NextResponse(script, {
         headers: {
             'Content-Type': 'application/javascript',
-            'Cache-Control': 'public, max-age=300',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Access-Control-Allow-Origin': '*',
         },
     });
