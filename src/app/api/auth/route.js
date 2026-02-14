@@ -26,7 +26,7 @@ export async function GET(request) {
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
   const redirectUri = encodeURIComponent(`${appUrl}/api/auth/callback`);
-  const scopes = 'write_orders,read_orders,read_products,write_customers,read_customers,read_script_tags,write_script_tags';
+  const scopes = 'write_orders,read_orders,read_products,write_products,write_customers,read_customers,read_script_tags,write_script_tags';
   const state = crypto.randomBytes(16).toString('hex');
   const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}&state=${state}`;
 
