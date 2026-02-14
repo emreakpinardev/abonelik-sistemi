@@ -266,11 +266,27 @@ export async function GET() {
                     subscription_frequency_label: frequencyLabel,
                     shop_url: window.location.origin,
                     shop_name: window.Shopify?.shop || window.location.hostname,
-                    // Musteri adres bilgileri (Shopify customer objesinden)
-                    customer: window.__st?.cid ? {
-                        city: '',
-                        province: '',
-                    } : null,
+                    // Musteri sehir/ilce bilgileri
+                    customer_city: (function() {
+                        // 1. Shopify kargo hesaplayicisi inputu
+                        var cityInput = document.querySelector('#address_province, [name="address[province]"], [name="checkout[shipping_address][province]"], select[data-bind="province"]');
+                        if (cityInput) {
+                            if (cityInput.tagName === 'SELECT') return cityInput.options[cityInput.selectedIndex]?.text || '';
+                            return cityInput.value || '';
+                        }
+                        // 2. Giriş yapmış müşterinin adresi
+                        if (window.__st && window.__st.p === 'cart') {
+                            var addrCity = document.querySelector('.address-city, [data-address-city]');
+                            if (addrCity) return addrCity.textContent?.trim() || '';
+                        }
+                        // 3. SessionStorage'dan
+                        return sessionStorage.getItem('customer_city') || '';
+                    })(),
+                    customer_district: (function() {
+                        var distInput = document.querySelector('#address_city, [name="address[city]"], [name="checkout[shipping_address][city]"]');
+                        if (distInput) return distInput.value || '';
+                        return sessionStorage.getItem('customer_district') || '';
+                    })(),
                     // Site logosu
                     shop_logo: (function() {
                         var logo = document.querySelector('.header__heading-logo, .site-header__logo-image, header img[src*="logo"], .header-logo img, .logo img, a.header__logo img');
@@ -281,7 +297,6 @@ export async function GET() {
                         }
                         return '';
                     })(),
-                    // Kargo bilgileri (Shopify'dan)
                     requires_shipping: cart.requires_shipping
                 };
 

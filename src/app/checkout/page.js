@@ -30,6 +30,7 @@ export default function CheckoutPage() {
     const [submitting, setSubmitting] = useState(false);
     const [checkoutHtml, setCheckoutHtml] = useState('');
     const [shippingMethod, setShippingMethod] = useState('free');
+    const [shippingRates, setShippingRates] = useState([]);
     const [purchaseType, setPurchaseType] = useState('single');
     const [subscriptionFrequency, setSubscriptionFrequency] = useState('');
     const [subscriptionFrequencyLabel, setSubscriptionFrequencyLabel] = useState('');
@@ -54,11 +55,11 @@ export default function CheckoutPage() {
                 }
                 if (decoded.shop_logo) setShopLogo(decoded.shop_logo);
                 // Musteri bilgilerini otomatik doldur
-                if (decoded.customer) {
+                if (decoded.customer_city) {
                     setFormData(prev => ({
                         ...prev,
-                        city: decoded.customer.city || prev.city,
-                        state: decoded.customer.province || prev.state,
+                        city: decoded.customer_city || prev.city,
+                        state: decoded.customer_district || prev.state,
                     }));
                 }
             } catch (e) {
@@ -68,9 +69,31 @@ export default function CheckoutPage() {
         setLoading(false);
     }, []);
 
+    // Shopify kargo yontemlerini cek
+    useEffect(() => {
+        if (!cartData?.shop_url || !formData.city) return;
+        fetchShippingRates();
+    }, [cartData?.shop_url, formData.city]);
+
+    async function fetchShippingRates() {
+        try {
+            const res = await fetch(`/api/shopify/shipping-rates?city=${encodeURIComponent(formData.city)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.rates && data.rates.length > 0) {
+                    setShippingRates(data.rates);
+                    setShippingMethod(data.rates[0].id);
+                }
+            }
+        } catch (e) {
+            console.error('Kargo bilgileri alinamadi:', e);
+        }
+    }
+
     const items = cartData?.items || [];
     const subtotal = parseFloat(cartData?.total || 0);
-    const shippingCost = shippingMethod === 'express' ? 49.90 : 0;
+    const selectedRate = shippingRates.find(r => r.id === shippingMethod);
+    const shippingCost = selectedRate ? parseFloat(selectedRate.price) : (shippingMethod === 'express' ? 49.90 : 0);
     const total = (subtotal + shippingCost).toFixed(2);
     const isSubscription = purchaseType === 'subscription';
 
@@ -152,7 +175,6 @@ export default function CheckoutPage() {
         }
     }
 
-    // Sehir listesi
     const cities = [
         'Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Aksaray', 'Amasya', 'Ankara', 'Antalya', 'Ardahan', 'Artvin',
         'Aydın', 'Balıkesir', 'Bartın', 'Batman', 'Bayburt', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur',
@@ -168,21 +190,70 @@ export default function CheckoutPage() {
         return (<><style>{css}</style><div className="co-page"><div className="co-wrap"><div className="co-loading"><div className="co-spinner" /><p>Yükleniyor...</p></div></div></div></>);
     }
 
+    // iyzico formu açıkken — SAYFA İÇİNDE göster (popup değil)
     if (checkoutHtml) {
         return (
             <><style>{css}</style>
-                <div className="co-page"><div className="co-wrap">
-                    <div className="co-nav">
-                        {shopLogo && <img src={shopLogo} alt="Logo" className="co-logo" />}
-                        <span className="co-breadcrumb">Sepet › Adres › <strong>Ödeme</strong></span>
+                <div className="co-page">
+                    <div className="co-wrap">
+                        <div className="co-nav">
+                            {shopLogo && <img src={shopLogo} alt="Logo" className="co-logo" />}
+                            <span className="co-breadcrumb">Sepet › Adres › <strong>Ödeme</strong></span>
+                        </div>
+
+                        <div className="co-grid">
+                            {/* LEFT — iyzico ödeme formu */}
+                            <div className="co-left">
+                                <h2 className="co-section-title"><Icon name="credit_card" size={22} /> Ödeme Bilgileri</h2>
+                                <p className="co-iyzico-sub">Kart bilgilerinizi güvenle girin</p>
+                                <div className="co-iyzico-inline">
+                                    <IyzicoForm html={checkoutHtml} />
+                                </div>
+                                <div className="co-secure-footer"><Icon name="lock" size={14} /> iyzico güvencesiyle 256-bit SSL şifrelemesi</div>
+                            </div>
+
+                            {/* RIGHT — Sipariş Özeti hala görünür */}
+                            <div className="co-right">
+                                <div className="co-summary-card">
+                                    <h2 className="co-summary-title"><Icon name="shopping_bag" size={20} /> Sipariş Özeti</h2>
+                                    <div className="co-items">
+                                        {items.map((item, i) => (
+                                            <div key={i} className="co-item">
+                                                <div className="co-item-img">
+                                                    {item.image ? <img src={item.image} alt={item.name} /> : <div className="co-item-placeholder"><Icon name="inventory_2" size={22} /></div>}
+                                                    {item.quantity > 1 && <span className="co-item-qty">{item.quantity}</span>}
+                                                </div>
+                                                <div className="co-item-info">
+                                                    <div className="co-item-name">{item.name}</div>
+                                                    {item.variant && <div className="co-item-variant">{item.variant}</div>}
+                                                </div>
+                                                <div className="co-item-price">₺{item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Teslimat bilgisi */}
+                                    <div className="co-order-info">
+                                        <div className="co-order-info-row"><Icon name="person" size={16} /><span>{formData.firstName} {formData.lastName}</span></div>
+                                        <div className="co-order-info-row"><Icon name="location_on" size={16} /><span>{formData.city}{formData.state ? `, ${formData.state}` : ''}</span></div>
+                                        <div className="co-order-info-row"><Icon name="local_shipping" size={16} /><span>{selectedRate?.name || (shippingMethod === 'express' ? 'Hızlı Kargo' : 'Ücretsiz Kargo')}</span></div>
+                                    </div>
+
+                                    <div className="co-totals">
+                                        <div className="co-total-row"><span>Ara Toplam</span><span>₺{subtotal.toFixed(2)}</span></div>
+                                        <div className="co-total-row"><span>Kargo</span><span>{shippingCost === 0 ? 'Ücretsiz' : `₺${shippingCost.toFixed(2)}`}</span></div>
+                                        <div className="co-total-row co-total-final"><span>Toplam</span><span>₺{total}</span></div>
+                                    </div>
+                                </div>
+
+                                <div className="co-trust">
+                                    <div className="co-trust-item"><Icon name="lock" size={14} /> 256-bit SSL</div>
+                                    <div className="co-trust-item"><Icon name="verified_user" size={14} /> iyzico Güvence</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div className="co-iyzico-wrap">
-                        <h2><Icon name="credit_card" size={24} /> Ödeme Bilgileri</h2>
-                        <p className="co-iyzico-sub">Kart bilgilerinizi güvenle girin</p>
-                        <IyzicoForm html={checkoutHtml} />
-                        <div className="co-secure-footer"><Icon name="lock" size={14} /> iyzico güvencesiyle 256-bit SSL şifrelemesi</div>
-                    </div>
-                </div></div>
+                </div>
             </>
         );
     }
@@ -234,7 +305,7 @@ export default function CheckoutPage() {
                         {/* LEFT — FORM */}
                         <div className="co-left">
                             <form onSubmit={handleSubmit}>
-                                <h2 className="co-section-title"><Icon name="local_shipping" size={22} /> Teslimat Adresi</h2>
+                                <h2 className="co-section-title"><Icon name="location_on" size={22} /> Teslimat Adresi</h2>
                                 <div className="co-row">
                                     <div className="co-field"><label>Ad <span className="req">*</span></label><input type="text" name="firstName" placeholder="Adınız" value={formData.firstName} onChange={handleInputChange} required /></div>
                                     <div className="co-field"><label>Soyad <span className="req">*</span></label><input type="text" name="lastName" placeholder="Soyadınız" value={formData.lastName} onChange={handleInputChange} required /></div>
@@ -258,18 +329,36 @@ export default function CheckoutPage() {
 
                                 <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="local_shipping" size={22} /> Kargo Yöntemi</h2>
                                 <div className="co-shipping-options">
-                                    <label className={`co-shipping-opt ${shippingMethod === 'free' ? 'active' : ''}`}>
-                                        <input type="radio" name="shipping" value="free" checked={shippingMethod === 'free'} onChange={() => setShippingMethod('free')} />
-                                        <div className="co-ship-icon"><Icon name="inventory_2" size={26} /></div>
-                                        <div className="co-ship-info"><strong>Ücretsiz Kargo</strong><span>7-10 İş Günü</span></div>
-                                        <div className="co-ship-price">Ücretsiz</div>
-                                    </label>
-                                    <label className={`co-shipping-opt ${shippingMethod === 'express' ? 'active' : ''}`}>
-                                        <input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')} />
-                                        <div className="co-ship-icon"><Icon name="rocket_launch" size={26} /></div>
-                                        <div className="co-ship-info"><strong>Hızlı Kargo</strong><span>1-3 İş Günü</span></div>
-                                        <div className="co-ship-price">₺49,90</div>
-                                    </label>
+                                    {shippingRates.length > 0 ? (
+                                        // Shopify'dan gelen kargo yontemleri
+                                        shippingRates.map(rate => (
+                                            <label key={rate.id} className={`co-shipping-opt ${shippingMethod === rate.id ? 'active' : ''}`}>
+                                                <input type="radio" name="shipping" value={rate.id} checked={shippingMethod === rate.id} onChange={() => setShippingMethod(rate.id)} />
+                                                <div className="co-ship-icon"><Icon name={parseFloat(rate.price) === 0 ? 'inventory_2' : 'rocket_launch'} size={26} /></div>
+                                                <div className="co-ship-info">
+                                                    <strong>{rate.name}</strong>
+                                                    {rate.delivery_days && <span>{rate.delivery_days}</span>}
+                                                </div>
+                                                <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ücretsiz' : `₺${parseFloat(rate.price).toFixed(2)}`}</div>
+                                            </label>
+                                        ))
+                                    ) : (
+                                        // Varsayilan kargo secenekleri
+                                        <>
+                                            <label className={`co-shipping-opt ${shippingMethod === 'free' ? 'active' : ''}`}>
+                                                <input type="radio" name="shipping" value="free" checked={shippingMethod === 'free'} onChange={() => setShippingMethod('free')} />
+                                                <div className="co-ship-icon"><Icon name="inventory_2" size={26} /></div>
+                                                <div className="co-ship-info"><strong>Ücretsiz Kargo</strong><span>7-10 İş Günü</span></div>
+                                                <div className="co-ship-price">Ücretsiz</div>
+                                            </label>
+                                            <label className={`co-shipping-opt ${shippingMethod === 'express' ? 'active' : ''}`}>
+                                                <input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')} />
+                                                <div className="co-ship-icon"><Icon name="rocket_launch" size={26} /></div>
+                                                <div className="co-ship-info"><strong>Hızlı Kargo</strong><span>1-3 İş Günü</span></div>
+                                                <div className="co-ship-price">₺49,90</div>
+                                            </label>
+                                        </>
+                                    )}
                                 </div>
 
                                 <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="payment" size={22} /> Ödeme Yöntemi</h2>
@@ -305,11 +394,7 @@ export default function CheckoutPage() {
                                             {items.map((item, i) => (
                                                 <div key={i} className="co-item">
                                                     <div className="co-item-img">
-                                                        {item.image ? (
-                                                            <img src={item.image} alt={item.name} />
-                                                        ) : (
-                                                            <div className="co-item-placeholder"><Icon name="inventory_2" size={22} /></div>
-                                                        )}
+                                                        {item.image ? <img src={item.image} alt={item.name} /> : <div className="co-item-placeholder"><Icon name="inventory_2" size={22} /></div>}
                                                         {item.quantity > 1 && <span className="co-item-qty">{item.quantity}</span>}
                                                     </div>
                                                     <div className="co-item-info">
@@ -415,8 +500,8 @@ const css = `
 .co-field textarea { resize: vertical; }
 
 /* Shipping */
-.co-shipping-options { display: flex; gap: 16px; }
-.co-shipping-opt { flex: 1; display: flex; align-items: center; gap: 12px; padding: 16px; border: 1.5px solid #e0e0e4; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: #fff; }
+.co-shipping-options { display: flex; gap: 16px; flex-wrap: wrap; }
+.co-shipping-opt { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 12px; padding: 16px; border: 1.5px solid #e0e0e4; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: #fff; }
 .co-shipping-opt:hover { border-color: #ccc; }
 .co-shipping-opt.active { border-color: #1a1a2e; background: #fafaff; }
 .co-shipping-opt input { display: none; }
@@ -453,6 +538,10 @@ const css = `
 .co-item-meta span { font-size: 11px; color: #aaa; }
 .co-item-price { font-size: 14px; font-weight: 600; color: #1a1a2e; white-space: nowrap; }
 
+/* Order info on payment step */
+.co-order-info { padding: 14px 0; margin-bottom: 14px; border-bottom: 1px solid #f0f0f3; }
+.co-order-info-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #666; padding: 4px 0; }
+
 .co-discount { display: flex; gap: 8px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
 .co-discount input { flex: 1; padding: 10px 14px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 13px; font-family: 'Inter', sans-serif; outline: none; color: #1a1a2e; }
 .co-discount input:focus { border-color: #1a1a2e; }
@@ -475,9 +564,9 @@ const css = `
 
 .co-empty { text-align: center; padding: 40px 0; color: #999; }
 
-.co-iyzico-wrap { max-width: 600px; margin: 0 auto; background: #fff; border: 1px solid #e8e8ec; border-radius: 12px; padding: 32px; }
-.co-iyzico-wrap h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-.co-iyzico-sub { color: #999; font-size: 14px; margin-bottom: 24px; }
+/* iyzico inline form */
+.co-iyzico-inline { margin-bottom: 20px; }
+.co-iyzico-sub { color: #999; font-size: 14px; margin-bottom: 24px; margin-top: -12px; }
 .co-secure-footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; display: flex; align-items: center; justify-content: center; gap: 4px; }
 
 .co-loading { text-align: center; padding: 100px 20px; }
