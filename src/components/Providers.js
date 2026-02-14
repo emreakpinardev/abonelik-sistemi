@@ -26,12 +26,14 @@ export function Providers({ children }) {
 
     return (
         <>
+            {/* 
             {config && (
-                <Script
+                <Script 
                     src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
                     data-api-key={config.apiKey}
                 />
             )}
+            */}
             {children}
         </>
     );
