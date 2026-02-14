@@ -251,8 +251,23 @@ export async function DELETE(request) {
             return NextResponse.json({ success: true, deactivated: true, message: `Plan deaktif edildi (${activeSubscriptions} aktif abonelik var)` });
         }
 
-        await prisma.plan.delete({ where: { id } });
-        return NextResponse.json({ success: true, deleted: true });
+        try {
+            await prisma.plan.delete({ where: { id } });
+            return NextResponse.json({ success: true, deleted: true });
+        } catch (deleteErr) {
+            // Gecmis odeme/abonelik kayitlariyla iliskili planlarda hard-delete FK hatasi verebilir.
+            // Bu durumda plani arsivleyip (active=false) panelden kaldiralim.
+            await prisma.plan.update({
+                where: { id },
+                data: { active: false },
+            });
+            return NextResponse.json({
+                success: true,
+                deactivated: true,
+                message: 'Plan iliskili kayitlar nedeniyle tamamen silinemedi, arsive alindi.',
+                reason: deleteErr?.message || 'delete_failed',
+            });
+        }
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

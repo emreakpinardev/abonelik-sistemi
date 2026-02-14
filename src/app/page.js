@@ -225,7 +225,14 @@ export default function AdminDashboard() {
   async function handleDeletePlan(planId) {
     if (!confirm('Silmek istediğinize emin misiniz?')) return;
     try {
-      await fetch(`/api/plans?id=${planId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/plans?id=${planId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Plan silinemedi');
+      }
+      if (data.message) {
+        alert(data.message);
+      }
       fetchPlans();
     } catch (err) { alert(err.message); }
   }

@@ -3,411 +3,318 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
 
-    const script = `
+  const script = `
 (function() {
-    'use strict';
+  'use strict';
 
-    var CHECKOUT_URL = '${appUrl}/checkout';
+  var CHECKOUT_URL = '${appUrl}/checkout';
 
-    // ===== URUN SAYFASINDA SATIN ALMA TIPINI + FREKANSINI YAKALA =====
-    function trackPurchaseType() {
-        // HER TIKLAMADA kontrol et
-        document.addEventListener('click', function(e) {
-            var el = e.target;
-            var checkEls = [el];
-            var parent = el.parentElement;
-            for (var i = 0; i < 5 && parent; i++) {
-                checkEls.push(parent);
-                parent = parent.parentElement;
-            }
+  function setFrequency(code, label) {
+    sessionStorage.setItem('subscription_frequency', code);
+    sessionStorage.setItem('subscription_frequency_label', label || '');
+  }
 
-            for (var j = 0; j < checkEls.length; j++) {
-                var text = (checkEls[j].textContent || '').trim().toLowerCase();
-                if (text.length > 50) continue;
+  function detectFrequencyFromText(text) {
+    if (!text) return false;
+    text = String(text).toLowerCase().trim();
 
-                // Satin alma tipi
-                if (text === 'tek seferlik' || text === 'one-time' || text === 'one time' || text.includes('tek seferlik')) {
-                    sessionStorage.setItem('purchase_type', 'single');
-                    sessionStorage.removeItem('subscription_frequency');
-                    console.log('[SKYCROPS] ✅ Tip: TEK SEFERLIK');
-                    break;
-                } else if (text === 'abonelik' || text === 'subscription' || text === 'subscribe' || text.includes('abonelik')) {
-                    sessionStorage.setItem('purchase_type', 'subscription');
-                    console.log('[SKYCROPS] ✅ Tip: ABONELIK');
-                    break;
-                }
+    if (/^(her hafta|1 hafta|haftada bir|weekly|every week|every 1 week|1 week)/i.test(text) || text === 'haftada 1') {
+      setFrequency('1_week', '1 haftada bir');
+      return true;
+    }
+    if (/^(2 hafta|iki hafta|2 haftada|every 2 week|bi.?weekly)/i.test(text) || text === '2 haftada bir') {
+      setFrequency('2_week', '2 haftada bir');
+      return true;
+    }
+    if (/^(3 hafta|uc hafta|3 haftada|every 3 week)/i.test(text) || text === '3 haftada bir') {
+      setFrequency('3_week', '3 haftada bir');
+      return true;
+    }
+    if (/^(4 hafta|4 haftada|monthly|aylik|ayda bir|every month|her ay|1 ay)/i.test(text) || text === 'ayda bir') {
+      setFrequency('1_month', '1 ayda bir');
+      return true;
+    }
+    if (/^(2 ay|iki ay|2 ayda|every 2 month)/i.test(text)) {
+      setFrequency('2_month', '2 ayda bir');
+      return true;
+    }
+    if (/^(3 ay|uc ay|3 ayda|every 3 month|quarterly)/i.test(text)) {
+      setFrequency('3_month', '3 ayda bir');
+      return true;
+    }
+    return false;
+  }
 
-                // Frekans secimi
-                if (text.includes('hafta') || text.includes('week') || text.includes('ay') || text.includes('month') || text.includes('gün') || text.includes('day')) {
-                    detectFrequencyFromText(text);
-                }
-            }
-        }, true);
+  function detectCurrentSelection() {
+    var all = document.querySelectorAll('.active, .selected, [aria-selected="true"], [aria-checked="true"], [data-active], .is-active, input:checked');
+    for (var i = 0; i < all.length; i++) {
+      var t = (all[i].textContent || '').trim().toLowerCase();
+      if (t.length > 80) continue;
+      if (t.includes('abonelik') || t.includes('subscription')) {
+        sessionStorage.setItem('purchase_type', 'subscription');
+        return;
+      }
+      if (t.includes('tek seferlik') || t.includes('one-time')) {
+        sessionStorage.setItem('purchase_type', 'single');
+        return;
+      }
+    }
+  }
 
-        // Select (dropdown) degisimlerini izle
-        document.addEventListener('change', function(e) {
-            if (e.target.tagName === 'SELECT') {
-                var selectedText = (e.target.options[e.target.selectedIndex]?.text || '').toLowerCase();
-                var selectedValue = (e.target.value || '').toLowerCase();
-                console.log('[SKYCROPS] 📋 Select değişti:', selectedText, selectedValue);
-                detectFrequencyFromText(selectedText) || detectFrequencyFromText(selectedValue);
-            }
-        }, true);
-
-        // Sayfa yuklendiginde kontrol et
-        setTimeout(function() {
-            detectCurrentSelection();
-            detectCurrentFrequency();
-        }, 1500);
-
-        setInterval(function() {
-            detectCurrentSelection();
-            detectCurrentFrequency();
-        }, 2000);
+  function detectCurrentFrequency() {
+    var selects = document.querySelectorAll('select');
+    for (var i = 0; i < selects.length; i++) {
+      var txt = (selects[i].options[selects[i].selectedIndex] && selects[i].options[selects[i].selectedIndex].text) || '';
+      if (detectFrequencyFromText(txt)) return;
     }
 
-    function detectFrequencyFromText(text) {
-        if (!text) return false;
-        text = text.toLowerCase().trim();
+    var active = document.querySelectorAll('.active, .selected, [aria-selected="true"], input[type="radio"]:checked');
+    for (var j = 0; j < active.length; j++) {
+      var v = (active[j].textContent || active[j].value || '').toLowerCase();
+      if (v.includes('hafta') || v.includes('week') || v.includes('ay') || v.includes('month')) {
+        if (detectFrequencyFromText(v)) return;
+      }
+    }
+  }
 
-        // "her hafta", "1 hafta", "haftada bir", "weekly", "every week", "every 1 week"
-        if (/^(her hafta|1 hafta|haftada bir|weekly|every week|every 1 week|1 week)/i.test(text) || text === 'hafta' || text === 'haftada 1' || text === '1 haftada bir') {
-            setFrequency('1_week', 'Haftada bir');
-            return true;
+  function trackPurchaseType() {
+    document.addEventListener('click', function(e) {
+      var el = e.target;
+      var chain = [el];
+      var p = el.parentElement;
+      for (var i = 0; i < 5 && p; i++) {
+        chain.push(p);
+        p = p.parentElement;
+      }
+
+      for (var j = 0; j < chain.length; j++) {
+        var text = (chain[j].textContent || '').trim().toLowerCase();
+        if (text.length > 80) continue;
+
+        if (text === 'tek seferlik' || text.includes('tek seferlik') || text === 'one-time') {
+          sessionStorage.setItem('purchase_type', 'single');
+          sessionStorage.removeItem('subscription_frequency');
+          sessionStorage.removeItem('subscription_frequency_label');
+          break;
         }
-        // "2 hafta", "2 haftada bir", "every 2 weeks", "bi-weekly"
-        if (/^(2 hafta|iki hafta|2 haftada|every 2 week|bi.?weekly)/i.test(text) || text === '2 haftada bir' || text === 'iki haftada bir') {
-            setFrequency('2_week', '2 haftada bir');
-            return true;
+        if (text === 'abonelik' || text.includes('abonelik') || text === 'subscription') {
+          sessionStorage.setItem('purchase_type', 'subscription');
+          break;
         }
-        // "3 hafta", "3 haftada bir", "every 3 weeks"
-        if (/^(3 hafta|üç hafta|3 haftada|every 3 week)/i.test(text) || text === '3 haftada bir' || text === 'üç haftada bir') {
-            setFrequency('3_week', '3 haftada bir');
-            return true;
+
+        if (text.includes('hafta') || text.includes('week') || text.includes('ay') || text.includes('month')) {
+          detectFrequencyFromText(text);
         }
-        // "4 hafta", "4 haftada bir", "monthly", "aylık", "ayda bir", "every month", "her ay"
-        if (/^(4 hafta|4 haftada|monthly|aylık|ayda bir|every month|her ay|1 ay)/i.test(text) || text === 'ayda bir' || text === 'aylik') {
-            setFrequency('1_month', 'Ayda bir');
-            return true;
-        }
-        // "2 ay", "2 ayda bir", "every 2 months"
-        if (/^(2 ay|iki ay|2 ayda|every 2 month)/i.test(text)) {
-            setFrequency('2_month', '2 ayda bir');
-            return true;
-        }
-        // "3 ay", "3 ayda bir", "every 3 months", "quarterly"
-        if (/^(3 ay|üç ay|3 ayda|every 3 month|quarterly)/i.test(text)) {
-            setFrequency('3_month', '3 ayda bir');
-            return true;
-        }
+      }
+    }, true);
+
+    document.addEventListener('change', function(e) {
+      if (e.target.tagName === 'SELECT') {
+        var txt = (e.target.options[e.target.selectedIndex] && e.target.options[e.target.selectedIndex].text) || '';
+        detectFrequencyFromText(txt) || detectFrequencyFromText(e.target.value || '');
+      }
+    }, true);
+
+    setTimeout(function() {
+      detectCurrentSelection();
+      detectCurrentFrequency();
+    }, 600);
+  }
+
+  function deriveFromText(text) {
+    if (!text) return null;
+    var t = String(text).toLowerCase();
+
+    var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|ay|month|months)/i);
+    if (m1) {
+      var n = parseInt(m1[1], 10) || 1;
+      if (/(hafta|week)/i.test(m1[2])) return { code: n + '_week', label: n + ' haftada bir' };
+      return { code: n + '_month', label: n + ' ayda bir' };
+    }
+
+    if (t.indexOf('haftada bir') !== -1 || t.indexOf('every week') !== -1) return { code: '1_week', label: '1 haftada bir' };
+    if (t.indexOf('2 haftada bir') !== -1) return { code: '2_week', label: '2 haftada bir' };
+    if (t.indexOf('3 haftada bir') !== -1) return { code: '3_week', label: '3 haftada bir' };
+    if (t.indexOf('ayda bir') !== -1 || t.indexOf('every month') !== -1) return { code: '1_month', label: '1 ayda bir' };
+    return null;
+  }
+
+  function interceptCheckout() {
+    document.addEventListener('click', function(e) {
+      var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      redirectToOurCheckout();
+      return false;
+    }, true);
+
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      if (form && form.action && form.action.indexOf('/checkout') !== -1) {
+        e.preventDefault();
+        e.stopPropagation();
+        redirectToOurCheckout();
         return false;
-    }
+      }
+    }, true);
+  }
 
-    function setFrequency(code, label) {
-        sessionStorage.setItem('subscription_frequency', code);
-        sessionStorage.setItem('subscription_frequency_label', label);
-        console.log('[SKYCROPS] 📅 Frekans:', label, '(' + code + ')');
-    }
+  function redirectToOurCheckout() {
+    detectCurrentSelection();
+    detectCurrentFrequency();
 
-    function detectCurrentSelection() {
-        var allElements = document.querySelectorAll('.active, .selected, [aria-selected="true"], [aria-checked="true"], [data-active], .is-active, input:checked');
-        for (var i = 0; i < allElements.length; i++) {
-            var text = (allElements[i].textContent || '').trim().toLowerCase();
-            if (text.length > 50) continue;
-
-            if (text.includes('abonelik') || text.includes('subscription')) {
-                if (sessionStorage.getItem('purchase_type') !== 'subscription') {
-                    sessionStorage.setItem('purchase_type', 'subscription');
-                    console.log('[SKYCROPS] 🔍 Otomatik tespit: ABONELIK');
-                }
-                return;
-            }
-            if (text.includes('tek seferlik') || text.includes('one-time')) {
-                if (sessionStorage.getItem('purchase_type') !== 'single') {
-                    sessionStorage.setItem('purchase_type', 'single');
-                    console.log('[SKYCROPS] 🔍 Otomatik tespit: TEK SEFERLIK');
-                }
-                return;
-            }
-        }
-    }
-
-    function detectCurrentFrequency() {
-        // Already have frequency - skip
-        if (sessionStorage.getItem('subscription_frequency')) return;
-
-        // Aktif/secili dropdown'lari kontrol et
-        var selects = document.querySelectorAll('select');
-        for (var i = 0; i < selects.length; i++) {
-            var sel = selects[i];
-            var text = (sel.options[sel.selectedIndex]?.text || '').toLowerCase();
-            if (detectFrequencyFromText(text)) return;
+    fetch('/cart.js')
+      .then(function(res) { return res.json(); })
+      .then(function(cart) {
+        if (!cart.items || cart.items.length === 0) {
+          alert('Sepetiniz bos!');
+          return;
         }
 
-        // Aktif butonlari/radio'lari kontrol et
-        var allActive = document.querySelectorAll('.active, .selected, [aria-selected="true"], input[type="radio"]:checked');
-        for (var j = 0; j < allActive.length; j++) {
-            var t = (allActive[j].textContent || allActive[j].value || '').toLowerCase();
-            if (t.includes('hafta') || t.includes('ay') || t.includes('week') || t.includes('month')) {
-                if (detectFrequencyFromText(t)) return;
-            }
+        var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
+        var frequency = sessionStorage.getItem('subscription_frequency') || '';
+        var frequencyLabel = sessionStorage.getItem('subscription_frequency_label') || '';
+        var planId = '';
+
+        // priority: properties(3) > selling_plan(2) > sku/text(1) > session(0)
+        var best = { code: '', label: '', priority: -1 };
+        function pick(code, label, priority) {
+          if (!code) return;
+          if (priority > best.priority) {
+            best.code = code;
+            best.label = label || '';
+            best.priority = priority;
+          }
         }
-    }
 
-    // ===== CHECKOUT BUTONLARINI YAKALA =====
-    function interceptCheckout() {
-        document.addEventListener('click', function(e) {
-            var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
-            if (!target) return;
+        var mappedItems = cart.items.map(function(item) {
+          var img = item.image || '';
+          if (img && !img.startsWith('http')) img = 'https:' + img;
 
-            var href = target.getAttribute('href') || '';
-            var isCheckoutLink = href.includes('/checkout');
-            var isCheckoutButton = target.name === 'checkout' || target.closest('form[action*="/checkout"]');
-            var isShopifyPayButton = target.closest('.shopify-payment-button');
+          var hasSP = !!item.selling_plan_allocation;
+          var hasProp = item.properties && (item.properties._subscription || item.properties.shipping_interval_unit_type || item.properties._seal_subscription);
+          if (hasSP || hasProp) purchaseType = 'subscription';
 
-            if (isCheckoutLink || isCheckoutButton || isShopifyPayButton) {
-                e.preventDefault();
-                e.stopPropagation();
-                redirectToOurCheckout();
-                return false;
+          var propPlanPrice = null;
+          if (item.properties && item.properties._plan_price) {
+            var raw = String(item.properties._plan_price).replace(',', '.').replace(/[^\\d.]/g, '');
+            var parsed = parseFloat(raw);
+            if (!isNaN(parsed) && parsed > 0) propPlanPrice = parsed;
+          }
+
+          if (item.properties) {
+            if (!planId && item.properties._plan_id) {
+              planId = String(item.properties._plan_id);
             }
-        }, true);
 
-        document.addEventListener('submit', function(e) {
-            var form = e.target;
-            if (form.action && form.action.includes('/checkout')) {
-                e.preventDefault();
-                e.stopPropagation();
-                redirectToOurCheckout();
-                return false;
+            if (item.properties.shipping_interval_unit_type && item.properties.shipping_interval_frequency) {
+              var unit = String(item.properties.shipping_interval_unit_type).toLowerCase();
+              var freq = parseInt(item.properties.shipping_interval_frequency, 10) || 1;
+              if (unit.indexOf('week') !== -1 || unit.indexOf('hafta') !== -1) pick(freq + '_week', freq + ' haftada bir', 3);
+              if (unit.indexOf('month') !== -1 || unit.indexOf('ay') !== -1) pick(freq + '_month', freq + ' ayda bir', 3);
             }
-        }, true);
-    }
 
-    function redirectToOurCheckout() {
-        detectCurrentSelection();
-        detectCurrentFrequency();
+            try {
+              Object.keys(item.properties).forEach(function(k) {
+                var v = item.properties[k];
+                if (v == null) return;
+                var d = deriveFromText(String(k) + ' ' + String(v));
+                if (d) pick(d.code, d.label, 3);
+              });
+            } catch (_) {}
+          }
 
-        fetch('/cart.js')
-            .then(function(res) { return res.json(); })
-            .then(function(cart) {
-                if (!cart.items || cart.items.length === 0) {
-                    alert('Sepetiniz bos!');
-                    return;
-                }
+          if (item.selling_plan_allocation && item.selling_plan_allocation.selling_plan) {
+            var d1 = deriveFromText(item.selling_plan_allocation.selling_plan.name || '');
+            if (d1) pick(d1.code, d1.label, 2);
+          }
 
-                var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
-                var frequency = sessionStorage.getItem('subscription_frequency') || '';
-                var frequencyLabel = sessionStorage.getItem('subscription_frequency_label') || '';
-                var derivedFrequencyCode = '';
-                var derivedFrequencyLabel = '';
+          if (item.sku) {
+            var d2 = deriveFromText(String(item.sku).replace(/[_-]/g, ' '));
+            if (d2) pick(d2.code, d2.label, 1);
+          }
 
-                var setDerivedFrequency = function(count, unit) {
-                    var n = parseInt(count, 10);
-                    if (!n || n < 1) return false;
-                    var u = String(unit || '').toLowerCase();
-                    if (u.indexOf('week') !== -1 || u.indexOf('hafta') !== -1 || u.indexOf('weekly') !== -1) {
-                        derivedFrequencyCode = n + '_week';
-                        derivedFrequencyLabel = n + ' haftada bir';
-                        return true;
-                    }
-                    if (u.indexOf('month') !== -1 || u.indexOf('ay') !== -1 || u.indexOf('monthly') !== -1) {
-                        derivedFrequencyCode = n + '_month';
-                        derivedFrequencyLabel = n + ' ayda bir';
-                        return true;
-                    }
-                    return false;
-                };
+          var effectiveUnitPrice = propPlanPrice !== null ? propPlanPrice : (item.price / 100);
+          var effectiveLinePrice = effectiveUnitPrice * item.quantity;
 
-                var tryDeriveFrequencyFromText = function(txt) {
-                    if (!txt) return false;
-                    var t = String(txt).toLowerCase();
-
-                    var m1 = t.match(/(\d+)\s*(hafta|week|weeks|ay|month|months)/i);
-                    if (m1 && setDerivedFrequency(m1[1], m1[2])) return true;
-
-                    var m2 = t.match(/(weekly|monthly)[\\s_-]*(\d+)/i);
-                    if (m2 && setDerivedFrequency(m2[2], m2[1])) return true;
-
-                    var m3 = t.match(/(\d+)[\\s_-]*(weekly|monthly)/i);
-                    if (m3 && setDerivedFrequency(m3[1], m3[2])) return true;
-
-                    if (t.indexOf('haftada bir') !== -1 || t.indexOf('every week') !== -1) return setDerivedFrequency(1, 'week');
-                    if (t.indexOf('ayda bir') !== -1 || t.indexOf('every month') !== -1) return setDerivedFrequency(1, 'month');
-
-                    return false;
-                };
-
-                console.log('[SKYCROPS] 🛒 Checkout - Tip:', purchaseType, '| Frekans:', frequencyLabel || 'yok');
-
-                var mappedItems = cart.items.map(function(item) {
-                        var img = item.image || '';
-                        if (img && !img.startsWith('http')) img = 'https:' + img;
-
-                        var hasSP = !!item.selling_plan_allocation;
-                        var hasProp = item.properties && (
-                            item.properties._subscription ||
-                            item.properties.shipping_interval_unit_type ||
-                            item.properties._seal_subscription
-                        );
-
-                        if (hasSP || hasProp) {
-                            purchaseType = 'subscription';
-                        }
-
-                        var propPlanPrice = null;
-                        if (item.properties && item.properties._plan_price) {
-                            var raw = String(item.properties._plan_price).replace(',', '.').replace(/[^\d.]/g, '');
-                            var parsed = parseFloat(raw);
-                            if (!isNaN(parsed) && parsed > 0) propPlanPrice = parsed;
-                        }
-
-                        var effectiveUnitPrice = propPlanPrice !== null ? propPlanPrice : (item.price / 100);
-                        var effectiveLinePrice = (effectiveUnitPrice * item.quantity);
-
-                        // Seal frekans bilgisi property'de olabilir
-                        if (item.properties) {
-                            var sp = item.properties;
-                            if (sp.shipping_interval_unit_type && sp.shipping_interval_frequency) {
-                                var unit = sp.shipping_interval_unit_type.toLowerCase();
-                                var freq = parseInt(sp.shipping_interval_frequency);
-                                if (unit.includes('week') || unit.includes('hafta')) {
-                                    frequency = freq + '_week';
-                                    frequencyLabel = freq + ' haftada bir';
-                                } else if (unit.includes('month') || unit.includes('ay')) {
-                                    frequency = freq + '_month';
-                                    frequencyLabel = freq + ' ayda bir';
-                                }
-                            }
-
-                            // Property textlerden frekans yakala (örn: "4 Haftada 1")
-                            if (!derivedFrequencyCode) {
-                                try {
-                                    Object.keys(sp).forEach(function(k) {
-                                        if (derivedFrequencyCode) return;
-                                        var v = sp[k];
-                                        if (v == null) return;
-                                        tryDeriveFrequencyFromText(String(k) + ' ' + String(v));
-                                    });
-                                } catch (_) {}
-                            }
-                        }
-
-                        if (!derivedFrequencyCode && item.selling_plan_allocation && item.selling_plan_allocation.selling_plan) {
-                            tryDeriveFrequencyFromText(item.selling_plan_allocation.selling_plan.name || '');
-                        }
-
-                        if (!derivedFrequencyCode && item.sku) {
-                            tryDeriveFrequencyFromText(String(item.sku).replace(/[_-]/g, ' '));
-                        }
-
-                        return {
-                            id: item.product_id,
-                            variant_id: item.variant_id,
-                            name: item.product_title,
-                            variant: item.variant_title || '',
-                            price: effectiveUnitPrice.toFixed(2),
-                            line_price: effectiveLinePrice.toFixed(2),
-                            quantity: item.quantity,
-                            image: img,
-                            sku: item.sku || '',
-                            handle: item.handle || '',
-                            product_type: item.product_type || '',
-                            vendor: item.vendor || '',
-                            requires_shipping: item.requires_shipping,
-                            properties: item.properties || {},
-                            selling_plan: item.selling_plan_allocation ? {
-                                id: item.selling_plan_allocation.selling_plan.id,
-                                name: item.selling_plan_allocation.selling_plan.name,
-                            } : null
-                        };
-                    });
-
-                var effectiveTotal = mappedItems.reduce(function(sum, item) {
-                    return sum + (parseFloat(item.line_price) || 0);
-                }, 0);
-
-                // Cart item'lerden türetilen frekans, session'daki eski değeri override etsin
-                if (derivedFrequencyCode) {
-                    frequency = derivedFrequencyCode;
-                    frequencyLabel = derivedFrequencyLabel || frequencyLabel;
-                    sessionStorage.setItem('subscription_frequency', frequency);
-                    if (frequencyLabel) sessionStorage.setItem('subscription_frequency_label', frequencyLabel);
-                }
-
-                var cartData = {
-                    items: mappedItems,
-                    total: effectiveTotal.toFixed(2),
-                    total_discount: ((cart.total_discount || 0) / 100).toFixed(2),
-                    currency: cart.currency,
-                    item_count: cart.item_count,
-                    purchase_type: purchaseType,
-                    subscription_frequency: frequency,
-                    subscription_frequency_label: frequencyLabel,
-                    shop_url: window.location.origin,
-                    shop_name: window.Shopify?.shop || window.location.hostname,
-                    // Musteri sehir/ilce bilgileri
-                    customer_city: (function() {
-                        // 1. Shopify kargo hesaplayicisi inputu
-                        var cityInput = document.querySelector('#address_province, [name="address[province]"], [name="checkout[shipping_address][province]"], select[data-bind="province"]');
-                        if (cityInput) {
-                            if (cityInput.tagName === 'SELECT') return cityInput.options[cityInput.selectedIndex]?.text || '';
-                            return cityInput.value || '';
-                        }
-                        // 2. Giriş yapmış müşterinin adresi
-                        if (window.__st && window.__st.p === 'cart') {
-                            var addrCity = document.querySelector('.address-city, [data-address-city]');
-                            if (addrCity) return addrCity.textContent?.trim() || '';
-                        }
-                        // 3. SessionStorage'dan
-                        return sessionStorage.getItem('customer_city') || '';
-                    })(),
-                    customer_district: (function() {
-                        var distInput = document.querySelector('#address_city, [name="address[city]"], [name="checkout[shipping_address][city]"]');
-                        if (distInput) return distInput.value || '';
-                        return sessionStorage.getItem('customer_district') || '';
-                    })(),
-                    // Site logosu
-                    shop_logo: (function() {
-                        var logo = document.querySelector('.header__heading-logo, .site-header__logo-image, header img[src*="logo"], .header-logo img, .logo img, a.header__logo img');
-                        if (logo) {
-                            var src = logo.src || logo.getAttribute('data-src') || '';
-                            if (src && !src.startsWith('http')) src = 'https:' + src;
-                            return src;
-                        }
-                        return '';
-                    })(),
-                    requires_shipping: cart.requires_shipping
-                };
-
-                var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
-                window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);
-            })
-            .catch(function(err) {
-                console.error('Sepet bilgileri alinamadi:', err);
-                alert('Bir hata olustu, lutfen tekrar deneyin.');
-            });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            trackPurchaseType();
-            interceptCheckout();
+          return {
+            id: item.product_id,
+            variant_id: item.variant_id,
+            name: item.product_title,
+            variant: item.variant_title || '',
+            price: effectiveUnitPrice.toFixed(2),
+            line_price: effectiveLinePrice.toFixed(2),
+            quantity: item.quantity,
+            image: img,
+            sku: item.sku || '',
+            handle: item.handle || '',
+            product_type: item.product_type || '',
+            vendor: item.vendor || '',
+            requires_shipping: item.requires_shipping,
+            properties: item.properties || {},
+            selling_plan: item.selling_plan_allocation ? {
+              id: item.selling_plan_allocation.selling_plan.id,
+              name: item.selling_plan_allocation.selling_plan.name
+            } : null
+          };
         });
-    } else {
-        trackPurchaseType();
-        interceptCheckout();
-    }
+
+        if (best.code) {
+          frequency = best.code;
+          frequencyLabel = best.label || frequencyLabel;
+          sessionStorage.setItem('subscription_frequency', frequency);
+          if (frequencyLabel) sessionStorage.setItem('subscription_frequency_label', frequencyLabel);
+        }
+
+        var effectiveTotal = mappedItems.reduce(function(sum, item) {
+          return sum + (parseFloat(item.line_price) || 0);
+        }, 0);
+
+        var cartData = {
+          items: mappedItems,
+          total: effectiveTotal.toFixed(2),
+          total_discount: ((cart.total_discount || 0) / 100).toFixed(2),
+          currency: cart.currency,
+          item_count: cart.item_count,
+          purchase_type: purchaseType,
+          subscription_frequency: frequency,
+          subscription_frequency_label: frequencyLabel,
+          plan_id: planId || '',
+          shop_url: window.location.origin,
+          shop_name: (window.Shopify && window.Shopify.shop) || window.location.hostname,
+          requires_shipping: cart.requires_shipping
+        };
+
+        var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
+        window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);
+      })
+      .catch(function(err) {
+        console.error('Sepet bilgileri alinamadi:', err);
+        alert('Bir hata olustu, lutfen tekrar deneyin.');
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      trackPurchaseType();
+      interceptCheckout();
+    });
+  } else {
+    trackPurchaseType();
+    interceptCheckout();
+  }
 })();
 `;
 
-    return new NextResponse(script, {
-        headers: {
-            'Content-Type': 'application/javascript',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Access-Control-Allow-Origin': '*',
-        },
-    });
+  return new NextResponse(script, {
+    headers: {
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
 }
+
