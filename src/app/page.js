@@ -23,7 +23,19 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const saved = sessionStorage.getItem('admin_auth');
-    if (saved === 'true') setIsAuthenticated(true);
+    if (saved === 'true') {
+      setIsAuthenticated(true);
+      return;
+    }
+
+    // Shopify Admin iframe'inden aciliyorsa otomatik oturum ac
+    const params = new URLSearchParams(window.location.search);
+    const shop = params.get('shop');
+    const host = params.get('host');
+    if (shop || host) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('admin_auth', 'true');
+    }
   }, []);
 
   useEffect(() => {
