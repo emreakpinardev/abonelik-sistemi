@@ -128,34 +128,17 @@ export async function GET(request) {
       console.error('Script installation exception:', scriptErr);
     }
 
-    // Admin panele yönlendir (Settings sayfasina)
-    return new Response(`
-      <!DOCTYPE html>
-      <html>
-        <head><title>Kurulum Başarılı</title></head>
-        <body style="font-family: system-ui; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0a0a0f; color: #f0f0f5;">
-          <div style="text-align: center; max-width: 500px; padding: 48px;">
-            <h1 style="font-size: 48px; margin-bottom: 16px;">✅</h1>
-            <h2 style="margin-bottom: 8px;">Kurulum Başarılı!</h2>
-            <p style="color: #9494a8; margin-bottom: 8px;">Mağaza: ${shop}</p>
-            <p style="color: #6c5ce7; font-weight: bold; margin-bottom: 24px;">Access Token alındı.</p>
-            <p style="background: #1a1a2e; padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 24px;">
-              ${scriptStatus}
-            </p>
-            <p style="background: #1a1a2e; padding: 16px; border-radius: 8px; font-size: 13px; word-break: break-all; border: 1px solid #2d2d44; margin-bottom: 24px;">
-              <strong>Token:</strong><br/>${accessToken}
-            </p>
-            <p style="color: #ff6b6b; font-size: 13px;">⚠️ Bu tokeni güvenli bir yere kopyalayın ve .env dosyanıza ekleyin!</p>
-            <a href="/" style="display:inline-block; padding:12px 24px; background:#5c6ac4; color:white; text-decoration:none; border-radius:6px; font-weight:bold; margin-top:10px;">Ayarlar Sayfasına Dön</a>
-          </div>
-        </body>
-      </html>
-    `, {
-      status: 200,
-      headers: { 'Content-Type': 'text/html' },
-    });
+    // Kurulum tamamlandi, Shopify Admin'e geri yonlendir
+    // Bu adim, uygulamanin "yuklu" olarak isaretlenmesi icin kritiktir.
+    const apiKey = process.env.SHOPIFY_CLIENT_ID;
+    const adminAppUrl = `https://${shop}/admin/apps/${apiKey}`;
+
+    return NextResponse.redirect(adminAppUrl);
+
   } catch (error) {
     console.error('OAuth callback error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return new Response(`
+        <html><body><h1>Hata Olustu</h1><p>${error.message}</p></body></html>
+    `, { status: 500, headers: { 'Content-Type': 'text/html' } });
   }
 }
