@@ -11,12 +11,11 @@ export async function GET() {
 
     var CHECKOUT_URL = '${appUrl}/checkout';
 
-    // ===== URUN SAYFASINDA SATIN ALMA TIPINI YAKALA =====
+    // ===== URUN SAYFASINDA SATIN ALMA TIPINI + FREKANSINI YAKALA =====
     function trackPurchaseType() {
-        // HER TIKLAMADA kontrol et - en genis yakalama
+        // HER TIKLAMADA kontrol et
         document.addEventListener('click', function(e) {
             var el = e.target;
-            // Tiklanan element veya parent'larinden birinin text'ini kontrol et
             var checkEls = [el];
             var parent = el.parentElement;
             for (var i = 0; i < 5 && parent; i++) {
@@ -26,34 +25,93 @@ export async function GET() {
 
             for (var j = 0; j < checkEls.length; j++) {
                 var text = (checkEls[j].textContent || '').trim().toLowerCase();
-                // Sadece kisa text'leri kontrol et (uzun paragraflar degil)
                 if (text.length > 50) continue;
 
+                // Satin alma tipi
                 if (text === 'tek seferlik' || text === 'one-time' || text === 'one time' || text.includes('tek seferlik')) {
                     sessionStorage.setItem('purchase_type', 'single');
-                    console.log('[SKYCROPS] ✅ Satin alma tipi: TEK SEFERLIK');
+                    sessionStorage.removeItem('subscription_frequency');
+                    console.log('[SKYCROPS] ✅ Tip: TEK SEFERLIK');
                     break;
                 } else if (text === 'abonelik' || text === 'subscription' || text === 'subscribe' || text.includes('abonelik')) {
                     sessionStorage.setItem('purchase_type', 'subscription');
-                    console.log('[SKYCROPS] ✅ Satin alma tipi: ABONELIK');
+                    console.log('[SKYCROPS] ✅ Tip: ABONELIK');
                     break;
+                }
+
+                // Frekans secimi
+                if (text.includes('hafta') || text.includes('week') || text.includes('ay') || text.includes('month') || text.includes('gün') || text.includes('day')) {
+                    detectFrequencyFromText(text);
                 }
             }
         }, true);
 
-        // Sayfa yuklendiginde mevcut secimi kontrol et
+        // Select (dropdown) degisimlerini izle
+        document.addEventListener('change', function(e) {
+            if (e.target.tagName === 'SELECT') {
+                var selectedText = (e.target.options[e.target.selectedIndex]?.text || '').toLowerCase();
+                var selectedValue = (e.target.value || '').toLowerCase();
+                console.log('[SKYCROPS] 📋 Select değişti:', selectedText, selectedValue);
+                detectFrequencyFromText(selectedText) || detectFrequencyFromText(selectedValue);
+            }
+        }, true);
+
+        // Sayfa yuklendiginde kontrol et
         setTimeout(function() {
             detectCurrentSelection();
+            detectCurrentFrequency();
         }, 1500);
 
-        // Her 2 saniyede kontrol et (SPA sayfalar icin)
         setInterval(function() {
             detectCurrentSelection();
+            detectCurrentFrequency();
         }, 2000);
     }
 
+    function detectFrequencyFromText(text) {
+        if (!text) return false;
+        text = text.toLowerCase().trim();
+
+        // "her hafta", "1 hafta", "haftada bir", "weekly", "every week", "every 1 week"
+        if (/^(her hafta|1 hafta|haftada bir|weekly|every week|every 1 week|1 week)/i.test(text) || text === 'hafta' || text === 'haftada 1' || text === '1 haftada bir') {
+            setFrequency('1_week', 'Haftada bir');
+            return true;
+        }
+        // "2 hafta", "2 haftada bir", "every 2 weeks", "bi-weekly"
+        if (/^(2 hafta|iki hafta|2 haftada|every 2 week|bi.?weekly)/i.test(text) || text === '2 haftada bir' || text === 'iki haftada bir') {
+            setFrequency('2_week', '2 haftada bir');
+            return true;
+        }
+        // "3 hafta", "3 haftada bir", "every 3 weeks"
+        if (/^(3 hafta|üç hafta|3 haftada|every 3 week)/i.test(text) || text === '3 haftada bir' || text === 'üç haftada bir') {
+            setFrequency('3_week', '3 haftada bir');
+            return true;
+        }
+        // "4 hafta", "4 haftada bir", "monthly", "aylık", "ayda bir", "every month", "her ay"
+        if (/^(4 hafta|4 haftada|monthly|aylık|ayda bir|every month|her ay|1 ay)/i.test(text) || text === 'ayda bir' || text === 'aylik') {
+            setFrequency('1_month', 'Ayda bir');
+            return true;
+        }
+        // "2 ay", "2 ayda bir", "every 2 months"
+        if (/^(2 ay|iki ay|2 ayda|every 2 month)/i.test(text)) {
+            setFrequency('2_month', '2 ayda bir');
+            return true;
+        }
+        // "3 ay", "3 ayda bir", "every 3 months", "quarterly"
+        if (/^(3 ay|üç ay|3 ayda|every 3 month|quarterly)/i.test(text)) {
+            setFrequency('3_month', '3 ayda bir');
+            return true;
+        }
+        return false;
+    }
+
+    function setFrequency(code, label) {
+        sessionStorage.setItem('subscription_frequency', code);
+        sessionStorage.setItem('subscription_frequency_label', label);
+        console.log('[SKYCROPS] 📅 Frekans:', label, '(' + code + ')');
+    }
+
     function detectCurrentSelection() {
-        // Aktif/secili buton veya etiketi bul
         var allElements = document.querySelectorAll('.active, .selected, [aria-selected="true"], [aria-checked="true"], [data-active], .is-active, input:checked');
         for (var i = 0; i < allElements.length; i++) {
             var text = (allElements[i].textContent || '').trim().toLowerCase();
@@ -72,6 +130,28 @@ export async function GET() {
                     console.log('[SKYCROPS] 🔍 Otomatik tespit: TEK SEFERLIK');
                 }
                 return;
+            }
+        }
+    }
+
+    function detectCurrentFrequency() {
+        // Already have frequency - skip
+        if (sessionStorage.getItem('subscription_frequency')) return;
+
+        // Aktif/secili dropdown'lari kontrol et
+        var selects = document.querySelectorAll('select');
+        for (var i = 0; i < selects.length; i++) {
+            var sel = selects[i];
+            var text = (sel.options[sel.selectedIndex]?.text || '').toLowerCase();
+            if (detectFrequencyFromText(text)) return;
+        }
+
+        // Aktif butonlari/radio'lari kontrol et
+        var allActive = document.querySelectorAll('.active, .selected, [aria-selected="true"], input[type="radio"]:checked');
+        for (var j = 0; j < allActive.length; j++) {
+            var t = (allActive[j].textContent || allActive[j].value || '').toLowerCase();
+            if (t.includes('hafta') || t.includes('ay') || t.includes('week') || t.includes('month')) {
+                if (detectFrequencyFromText(t)) return;
             }
         }
     }
@@ -106,10 +186,9 @@ export async function GET() {
         }, true);
     }
 
-    // ===== REDIRECT ONCESI SON KONTROL =====
     function redirectToOurCheckout() {
-        // Redirect oncesi sayfadaki secimi bir kez daha kontrol et
         detectCurrentSelection();
+        detectCurrentFrequency();
 
         fetch('/cart.js')
             .then(function(res) { return res.json(); })
@@ -120,16 +199,17 @@ export async function GET() {
                 }
 
                 var purchaseType = sessionStorage.getItem('purchase_type') || 'single';
-                console.log('[SKYCROPS] 🛒 Checkout yonlendirmesi - Tip:', purchaseType);
+                var frequency = sessionStorage.getItem('subscription_frequency') || '';
+                var frequencyLabel = sessionStorage.getItem('subscription_frequency_label') || '';
+
+                console.log('[SKYCROPS] 🛒 Checkout - Tip:', purchaseType, '| Frekans:', frequencyLabel || 'yok');
 
                 var cartData = {
                     items: cart.items.map(function(item) {
                         var img = item.image || '';
                         if (img && !img.startsWith('http')) img = 'https:' + img;
 
-                        // Selling plan varsa abonelik
                         var hasSP = !!item.selling_plan_allocation;
-                        // Properties'de abonelik bilgisi varsa
                         var hasProp = item.properties && (
                             item.properties._subscription ||
                             item.properties.shipping_interval_unit_type ||
@@ -138,6 +218,22 @@ export async function GET() {
 
                         if (hasSP || hasProp) {
                             purchaseType = 'subscription';
+                        }
+
+                        // Seal frekans bilgisi property'de olabilir
+                        if (item.properties) {
+                            var sp = item.properties;
+                            if (sp.shipping_interval_unit_type && sp.shipping_interval_frequency) {
+                                var unit = sp.shipping_interval_unit_type.toLowerCase();
+                                var freq = parseInt(sp.shipping_interval_frequency);
+                                if (unit.includes('week') || unit.includes('hafta')) {
+                                    frequency = freq + '_week';
+                                    frequencyLabel = freq + ' haftada bir';
+                                } else if (unit.includes('month') || unit.includes('ay')) {
+                                    frequency = freq + '_month';
+                                    frequencyLabel = freq + ' ayda bir';
+                                }
+                            }
                         }
 
                         return {
@@ -166,11 +262,11 @@ export async function GET() {
                     currency: cart.currency,
                     item_count: cart.item_count,
                     purchase_type: purchaseType,
+                    subscription_frequency: frequency,
+                    subscription_frequency_label: frequencyLabel,
                     shop_url: window.location.origin,
                     shop_name: window.Shopify?.shop || window.location.hostname
                 };
-
-                console.log('[SKYCROPS] 📦 Gonderilen veri:', JSON.stringify(cartData));
 
                 var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cartData))));
                 window.location.href = CHECKOUT_URL + '?cart=' + encodeURIComponent(encoded);

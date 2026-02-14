@@ -20,6 +20,7 @@ export async function POST(request) {
             productPrice,
             productName,
             variantId,
+            subscriptionFrequency,
             customerEmail,
             customerName,
             customerPhone,
@@ -54,20 +55,37 @@ export async function POST(request) {
                     if (autoPrice <= 0) {
                         return NextResponse.json({ error: 'Geçersiz fiyat' }, { status: 400 });
                     }
+
+                    // Frekans kodunu interval'e cevir
+                    let interval = 'MONTHLY';
+                    let intervalCount = 1;
+                    if (subscriptionFrequency) {
+                        const parts = subscriptionFrequency.split('_');
+                        const count = parseInt(parts[0]) || 1;
+                        const unit = parts[1] || 'month';
+                        if (unit === 'week') {
+                            interval = 'WEEKLY';
+                            intervalCount = count;
+                        } else {
+                            interval = 'MONTHLY';
+                            intervalCount = count;
+                        }
+                    }
+
                     plan = await prisma.plan.create({
                         data: {
                             name: productName || 'Abonelik Planı',
                             description: `Shopify ürünü: ${productName || productId}`,
                             price: autoPrice,
                             currency: 'TRY',
-                            interval: 'MONTHLY',
-                            intervalCount: 1,
+                            interval: interval,
+                            intervalCount: intervalCount,
                             shopifyProductId: String(productId),
                             shopifyVariantId: variantId ? String(variantId) : null,
                             active: true,
                         },
                     });
-                    console.log('✅ Otomatik plan oluşturuldu:', plan.id, plan.name);
+                    console.log('✅ Otomatik plan oluşturuldu:', plan.id, plan.name, interval, intervalCount);
                 }
             } else {
                 return NextResponse.json({ error: 'Abonelik için plan veya ürün bilgisi gerekli' }, { status: 400 });

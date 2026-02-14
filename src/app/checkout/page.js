@@ -27,6 +27,8 @@ export default function CheckoutPage() {
     const [checkoutHtml, setCheckoutHtml] = useState('');
     const [shippingMethod, setShippingMethod] = useState('free');
     const [purchaseType, setPurchaseType] = useState('single');
+    const [subscriptionFrequency, setSubscriptionFrequency] = useState('');
+    const [subscriptionFrequencyLabel, setSubscriptionFrequencyLabel] = useState('');
     const [discountCode, setDiscountCode] = useState('');
     const [formData, setFormData] = useState({
         firstName: '', lastName: '', email: '', phone: '',
@@ -40,10 +42,15 @@ export default function CheckoutPage() {
             try {
                 const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
                 setCartData(decoded);
-                // Satin alma tipi: script'ten gelen bilgi veya varsayilan
+                // Satin alma tipi ve frekans
                 if (decoded.purchase_type) {
                     setPurchaseType(decoded.purchase_type);
-                    console.log('🛒 Satın alma tipi (scriptden):', decoded.purchase_type);
+                    console.log('🛒 Satın alma tipi:', decoded.purchase_type);
+                }
+                if (decoded.subscription_frequency) {
+                    setSubscriptionFrequency(decoded.subscription_frequency);
+                    setSubscriptionFrequencyLabel(decoded.subscription_frequency_label || '');
+                    console.log('📅 Abonelik frekansı:', decoded.subscription_frequency_label);
                 }
                 console.log('📦 Shopify Sepet Verisi:', decoded);
                 console.log('🛒 Ürün sayısı:', decoded.item_count);
@@ -70,6 +77,32 @@ export default function CheckoutPage() {
     const total = (subtotal + shippingCost).toFixed(2);
     const isSubscription = purchaseType === 'subscription';
 
+    // Sonraki odeme tarihini hesapla
+    function getNextPaymentDate() {
+        const now = new Date();
+        const freq = subscriptionFrequency || '1_month';
+        const parts = freq.split('_');
+        const count = parseInt(parts[0]) || 1;
+        const unit = parts[1] || 'month';
+        if (unit === 'week') {
+            now.setDate(now.getDate() + count * 7);
+        } else {
+            now.setMonth(now.getMonth() + count);
+        }
+        return now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function getFrequencyText() {
+        if (subscriptionFrequencyLabel) return subscriptionFrequencyLabel;
+        const freq = subscriptionFrequency;
+        if (!freq) return 'Aylık';
+        const map = {
+            '1_week': 'Haftada bir', '2_week': '2 haftada bir', '3_week': '3 haftada bir',
+            '1_month': 'Ayda bir', '2_month': '2 ayda bir', '3_month': '3 ayda bir',
+        };
+        return map[freq] || 'Aylık';
+    }
+
     function handleInputChange(e) {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     }
@@ -92,6 +125,7 @@ export default function CheckoutPage() {
                     productPrice: total,
                     variantId: items.map(i => i.variant_id).join(','),
                     cartItems: items,
+                    subscriptionFrequency,
                     shippingMethod,
                     shippingCost,
                     shopUrl: cartData?.shop_url,
@@ -161,6 +195,32 @@ export default function CheckoutPage() {
                             {isSubscription ? 'Abonelik Siparişi — Düzenli teslimat' : 'Tek Seferlik Sipariş'}
                         </span>
                     </div>
+
+                    {/* ABONELİK BİLGİ KUTUSU */}
+                    {isSubscription && (
+                        <div className="co-sub-details">
+                            <div className="co-sub-details-title">📋 Abonelik Detayları</div>
+                            <div className="co-sub-details-grid">
+                                <div className="co-sub-detail-item">
+                                    <span className="co-sub-detail-label">Bugünkü Ödeme</span>
+                                    <span className="co-sub-detail-value">₺{total}</span>
+                                </div>
+                                <div className="co-sub-detail-item">
+                                    <span className="co-sub-detail-label">Yenileme Periyodu</span>
+                                    <span className="co-sub-detail-value">{getFrequencyText()}</span>
+                                </div>
+                                <div className="co-sub-detail-item">
+                                    <span className="co-sub-detail-label">Sonraki Ödeme</span>
+                                    <span className="co-sub-detail-value">{getNextPaymentDate()}</span>
+                                </div>
+                                <div className="co-sub-detail-item">
+                                    <span className="co-sub-detail-label">Yenileme Tutarı</span>
+                                    <span className="co-sub-detail-value">₺{total} / {getFrequencyText().toLowerCase()}</span>
+                                </div>
+                            </div>
+                            <div className="co-sub-details-note">İstediğiniz zaman iptal edebilirsiniz. Kart bilgileriniz güvenle saklanır.</div>
+                        </div>
+                    )}
 
                     {/* DEBUG: Gelen Veriler */}
                     <details className="co-debug">
@@ -311,11 +371,20 @@ const css = `
 .co-breadcrumb strong { color: #1a1a2e; }
 
 /* Purchase Type Badge (info-only) */
-.co-purchase-badge { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+.co-purchase-badge { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; font-weight: 500; }
 .co-purchase-badge.single { background: #f0f7ff; border: 1px solid #90caf9; color: #1565c0; }
 .co-purchase-badge.sub { background: #fff8e1; border: 1px solid #ffe082; color: #e65100; }
 .co-purchase-badge-icon { font-size: 20px; }
 .co-purchase-badge-text { flex: 1; }
+
+/* Subscription Details Box */
+.co-sub-details { background: #fafafa; border: 1px solid #e8e8ec; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+.co-sub-details-title { font-size: 15px; font-weight: 600; color: #1a1a2e; margin-bottom: 14px; }
+.co-sub-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.co-sub-detail-item { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #fff; border-radius: 8px; border: 1px solid #f0f0f4; }
+.co-sub-detail-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 500; }
+.co-sub-detail-value { font-size: 15px; font-weight: 600; color: #1a1a2e; }
+.co-sub-details-note { margin-top: 14px; font-size: 12px; color: #888; text-align: center; padding-top: 12px; border-top: 1px solid #f0f0f4; }
 
 /* Debug Panel */
 .co-debug {
