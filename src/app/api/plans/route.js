@@ -144,21 +144,18 @@ export async function POST(request) {
             });
 
             if (existing) {
-                if (!existing.shopifyVariantId) {
-                    const backfilledVariantId = await ensurePlanVariant({
-                        productId: shopifyProductId,
-                        price,
-                        interval: interval || 'MONTHLY',
-                        intervalCount: parseInt(intervalCount || 1),
-                        existingVariantId: null,
-                    });
-                    const updated = await prisma.plan.update({
-                        where: { id: existing.id },
-                        data: { shopifyVariantId: backfilledVariantId ? String(backfilledVariantId) : null },
-                    });
-                    return NextResponse.json({ success: true, plan: updated, message: 'Plan zaten mevcut (variant baglandi)' });
-                }
-                return NextResponse.json({ success: true, plan: existing, message: 'Plan zaten mevcut' });
+                const ensuredVariantId = await ensurePlanVariant({
+                    productId: shopifyProductId,
+                    price,
+                    interval: interval || 'MONTHLY',
+                    intervalCount: parseInt(intervalCount || 1),
+                    existingVariantId: existing.shopifyVariantId ? String(existing.shopifyVariantId) : null,
+                });
+                const updated = await prisma.plan.update({
+                    where: { id: existing.id },
+                    data: { shopifyVariantId: ensuredVariantId ? String(ensuredVariantId) : null },
+                });
+                return NextResponse.json({ success: true, plan: updated, message: 'Plan zaten mevcut (variant guncellendi)' });
             }
         }
 
