@@ -20,8 +20,14 @@ export default function AdminDashboard() {
 
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null); // For plan editing
-  const [newPlanForm, setNewPlanForm] = useState({ interval: 'WEEKLY', intervalCount: 1, price: '' });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [newPlanForm, setNewPlanForm] = useState({
+    name: '',
+    description: '',
+    interval: 'WEEKLY',
+    intervalCount: 1,
+    price: ''
+  });
 
   useEffect(() => {
     const auth = sessionStorage.getItem('admin_auth');
@@ -104,28 +110,30 @@ export default function AdminDashboard() {
     if (!selectedProduct) return alert("Lütfen bir ürün seçin");
     if (!newPlanForm.price) return alert("Lütfen fiyat girin");
 
-    const planName = `${intervalLabel(newPlanForm.interval, newPlanForm.intervalCount)} Abonelik`; // Auto name
+    // Auto name if empty
+    const autoName = `${intervalLabel(newPlanForm.interval, newPlanForm.intervalCount)} Abonelik`;
+    const finalName = newPlanForm.name.trim() || autoName;
+    const finalDesc = newPlanForm.description.trim() || (newPlanForm.interval === 'WEEKLY' ? 'Haftalık yenilenir' : 'Aylık yenilenir');
 
     try {
       const res = await fetch('/api/plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: planName,
-          description: newPlanForm.interval === 'WEEKLY' ? 'Haftalık yenilenir' : 'Aylık yenilenir',
+          name: finalName,
+          description: finalDesc,
           price: newPlanForm.price,
           interval: newPlanForm.interval,
           intervalCount: newPlanForm.intervalCount,
-          shopifyProductId: selectedProduct.id.toString(), // String ID
+          shopifyProductId: selectedProduct.id.toString(),
           isTemplate: false,
           groupName: selectedProduct.title
         })
       });
       const data = await res.json();
       if (data.success) {
-        // alert('Plan eklendi!');
-        fetchPlans(); // Refresh
-        setNewPlanForm({ ...newPlanForm, price: '' }); // Reset price only
+        fetchPlans();
+        setNewPlanForm({ ...newPlanForm, price: '', name: '', description: '' });
       } else {
         alert('Hata: ' + (data.message || data.error));
       }
@@ -168,7 +176,7 @@ export default function AdminDashboard() {
   function intervalLabel(interval, count) {
     const map = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda' };
     const unit = map[interval] || 'Ayda';
-    return `${count} ${unit} 1`; // "1 Ayda 1", "2 Haftada 1"
+    return `${count} ${unit} 1`;
   }
 
   function statusBadge(status) {
@@ -196,16 +204,12 @@ export default function AdminDashboard() {
     );
   }
 
-  // Filtered Products
   const filteredProducts = products.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  // Selected Product's Plans
   const selectedPlans = selectedProduct ? plans.filter(p => p.shopifyProductId === selectedProduct.id.toString()) : [];
 
   return (
     <div style={st.page}>
       <div style={st.container}>
-        {/* Header */}
         <div style={st.header}>
           <h1 style={st.title}>Abonelik Yönetimi</h1>
           <div style={{ display: 'flex', gap: 10 }}>
@@ -214,7 +218,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Stats */}
         <div style={st.statsGrid}>
           <StatCard icon="check_circle" label="Aktif" value={stats.byStatus?.ACTIVE || 0} color="#16a34a" />
           <StatCard icon="payments" label="Gelir" value={`${(stats.totalRevenue || 0).toLocaleString('tr-TR')}₺`} color="#2563eb" />
@@ -222,17 +225,14 @@ export default function AdminDashboard() {
           <StatCard icon="layers" label="Plan" value={plans.length} color="#8b5cf6" />
         </div>
 
-        {/* Tabs */}
         <div style={st.tabs}>
           <TabBtn active={activeTab === 'products'} icon="inventory" label="Ürünler & Planlar" onClick={() => setActiveTab('products')} />
           <TabBtn active={activeTab === 'subscriptions'} icon="people" label="Aboneler" onClick={() => setActiveTab('subscriptions')} />
           <TabBtn active={activeTab === 'settings'} icon="settings" label="Ayarlar" onClick={() => setActiveTab('settings')} />
         </div>
 
-        {/* TAB 1: PRODUCTS & PLANS */}
         {activeTab === 'products' && (
           <div style={{ display: 'flex', gap: 20, height: '600px' }}>
-            {/* LEFT: Product List */}
             <div style={{ width: '30%', ...st.card, display: 'flex', flexDirection: 'column' }}>
               <h3 style={st.cardTitle}>1. Ürün Seçin</h3>
               <input style={st.input} placeholder="Ürün Ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -254,7 +254,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* RIGHT: Plan MAnager */}
             <div style={{ flex: 1, ...st.card, display: 'flex', flexDirection: 'column' }}>
               {!selectedProduct ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
@@ -270,9 +269,22 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Add New Plan Form */}
                   <div style={{ background: '#f9fafb', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid #e5e7eb' }}>
                     <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Yeni Plan Ekle</h4>
+
+                    {/* Row 1: Name & Desc */}
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={st.label}>Plan Adı (Opsiyonel)</label>
+                        <input style={st.input} placeholder="Örn: Haftalık Paket" value={newPlanForm.name} onChange={e => setNewPlanForm({ ...newPlanForm, name: e.target.value })} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={st.label}>Açıklama (Opsiyonel)</label>
+                        <input style={st.input} placeholder="Müşteriye görünecek açıklama" value={newPlanForm.description} onChange={e => setNewPlanForm({ ...newPlanForm, description: e.target.value })} />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Settings */}
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
                       <div style={{ width: 100 }}>
                         <label style={st.label}>Sıklık</label>
@@ -295,7 +307,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Existing Plans */}
                   <h4 style={{ margin: '0 0 10px', fontSize: 14 }}>Mevcut Abonelik Seçenekleri</h4>
                   <div style={{ flex: 1, overflowY: 'auto' }}>
                     {selectedPlans.length === 0 ? (
@@ -324,7 +335,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 2: SUBSCRIPTIONS */}
         {activeTab === 'subscriptions' && (
           <div style={st.card}>
             <h2 style={st.sectionTitle}>Abonelik Listesi</h2>
@@ -346,7 +356,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 3: SETTINGS */}
         {activeTab === 'settings' && (
           <div style={st.card}>
             <h3>Ayarlar</h3>
@@ -363,7 +372,6 @@ export default function AdminDashboard() {
   );
 }
 
-// Sub Components & Styles
 function TabBtn({ active, icon, label, onClick }) {
   return <button onClick={onClick} style={active ? st.tabActive : st.tab}><span className="material-icons-outlined" style={{ fontSize: 18, marginRight: 6 }}>{icon}</span>{label}</button>;
 }
