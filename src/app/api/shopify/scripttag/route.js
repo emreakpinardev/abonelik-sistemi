@@ -2,15 +2,27 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+function getShopifyCredentials() {
+    let shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
+
+    if (!shopDomain || !accessToken) {
+        throw new Error('Shopify credentials missing');
+    }
+
+    // Sanitize domain
+    shopDomain = shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!shopDomain.includes('.myshopify.com') && !shopDomain.includes('.')) {
+        shopDomain += '.myshopify.com';
+    }
+
+    return { shopDomain, accessToken, apiVersion };
+}
+
 export async function GET(request) {
     try {
-        const shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
-
-        if (!shopDomain || !accessToken) {
-            return NextResponse.json({ error: 'Shopify credentials missing' }, { status: 500 });
-        }
+        const { shopDomain, accessToken, apiVersion } = getShopifyCredentials();
 
         const url = `https://${shopDomain}/admin/api/${apiVersion}/script_tags.json`;
         const response = await fetch(url, {
@@ -19,8 +31,20 @@ export async function GET(request) {
 
         const data = await response.json();
 
+        if (!response.ok) {
+            console.error('Shopify API Error (GET):', data);
+            return NextResponse.json({
+                error: 'Failed to fetch script tags',
+                details: data.errors
+            }, { status: response.status });
+        }
+
+        if (!data.script_tags) {
+            console.error('Unexpected API Response:', data);
+            return NextResponse.json({ error: 'Invalid API response from Shopify' }, { status: 502 });
+        }
+
         // Check if our script is installed
-        // We look for src ending with '/api/script'
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
         const scriptUrl = `${appUrl}/api/script`;
 
@@ -29,38 +53,41 @@ export async function GET(request) {
         return NextResponse.json({
             installed: !!installedScript,
             scriptTag: installedScript || null,
-            allScripts: data.script_tags
+            allScripts: data.script_tags // For debugging
         });
 
     } catch (error) {
+        console.error('API Handler Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function POST(request) {
     try {
-        const shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
+        const { shopDomain, accessToken, apiVersion } = getShopifyCredentials();
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
         const scriptUrl = `${appUrl}/api/script`;
 
-        if (!shopDomain || !accessToken) {
-            return NextResponse.json({ error: 'Shopify credentials missing' }, { status: 500 });
-        }
-
-        // First check if already installed to avoid duplicates
-        const checkRes = await fetch(`https://${shopDomain}/admin/api/${apiVersion}/script_tags.json`, {
+        // 1. Check existing
+        const checkUrl = `https://${shopDomain}/admin/api/${apiVersion}/script_tags.json`;
+        const checkRes = await fetch(checkUrl, {
             headers: { 'X-Shopify-Access-Token': accessToken }
         });
-        const checkData = await checkRes.json();
-        const existing = checkData.script_tags.find(s => s.src === scriptUrl);
 
-        if (existing) {
-            return NextResponse.json({ success: true, message: 'Already installed', scriptTag: existing });
+        const checkData = await checkRes.json();
+
+        if (checkRes.ok && checkData.script_tags) {
+            const existing = checkData.script_tags.find(s => s.src === scriptUrl);
+            if (existing) {
+                return NextResponse.json({ success: true, message: 'Already installed', scriptTag: existing });
+            }
+        } else {
+            console.error('Shopify API Check Error:', checkData);
+            // Proceed to try install anyway? No, if we can't check, we probably can't install.
+            // But maybe valid error?
         }
 
-        // Install
+        // 2. Install
         const url = `https://${shopDomain}/admin/api/${apiVersion}/script_tags.json`;
         const body = {
             script_tag: {
@@ -78,12 +105,13 @@ export async function POST(request) {
             body: JSON.stringify(body)
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
-            const errText = await response.text();
-            throw new Error('Shopify API Error: ' + errText);
+            console.error('Shopify Install Error:', data);
+            return NextResponse.json({ error: 'Installation failed', details: data.errors }, { status: response.status });
         }
 
-        const data = await response.json();
         return NextResponse.json({ success: true, scriptTag: data.script_tag });
 
     } catch (error) {
@@ -95,17 +123,10 @@ export async function DELETE(request) {
     try {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
-
-        const shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
-
-        if (!shopDomain || !accessToken) {
-            return NextResponse.json({ error: 'Shopify credentials missing' }, { status: 500 });
-        }
+        const { shopDomain, accessToken, apiVersion } = getShopifyCredentials();
 
         if (!id) {
-            // If ID not provided, find and delete ours
+            // Find ourselves
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
             const scriptUrl = `${appUrl}/api/script`;
 
@@ -113,13 +134,16 @@ export async function DELETE(request) {
                 headers: { 'X-Shopify-Access-Token': accessToken }
             });
             const checkData = await checkRes.json();
-            const existing = checkData.script_tags.find(s => s.src === scriptUrl);
 
-            if (!existing) {
-                return NextResponse.json({ success: true, message: 'Script not found to delete' });
+            if (!checkRes.ok || !checkData.script_tags) {
+                return NextResponse.json({ error: 'Failed to fetch scripts to delete' }, { status: 500 });
             }
 
-            // Recursively call validation or just proceed
+            const existing = checkData.script_tags.find(s => s.src === scriptUrl);
+            if (!existing) {
+                return NextResponse.json({ success: true, message: 'Script not found' });
+            }
+
             return deleteScript(existing.id, shopDomain, accessToken, apiVersion);
         }
 
@@ -138,7 +162,8 @@ async function deleteScript(id, shopDomain, accessToken, apiVersion) {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to delete script tag');
+        const data = await response.json();
+        throw new Error('Failed to delete: ' + JSON.stringify(data.errors));
     }
 
     return NextResponse.json({ success: true });
