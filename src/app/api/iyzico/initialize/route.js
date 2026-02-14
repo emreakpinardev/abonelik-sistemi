@@ -179,6 +179,7 @@ export async function POST(request) {
             return NextResponse.json({
                 success: true,
                 checkoutFormContent: result.checkoutFormContent,
+                paymentPageUrl: result.paymentPageUrl,
                 token: result.token,
             });
         } else {
