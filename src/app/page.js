@@ -136,7 +136,9 @@ export default function AdminDashboard() {
         setScriptInstalled(true);
         alert('Widget başarıyla yüklendi!');
       } else {
-        alert('Hata: ' + (data.error || 'Bilinmeyen hata'));
+        let msg = 'Hata: ' + (data.error || 'Bilinmeyen hata');
+        if (data.details) msg += '\nDetay: ' + JSON.stringify(data.details);
+        alert(msg);
       }
     } catch (err) {
       alert('Hata: ' + err.message);
