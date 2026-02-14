@@ -22,6 +22,11 @@ model Plan {
   shopifyProductId    String?  // Shopify'daki ürün ID'si
   shopifyVariantId    String?  // Shopify'daki varyant ID'si
   active        Boolean        @default(true)
+  
+  // Şablon ve Gruplama
+  isTemplate    Boolean        @default(false)
+  groupName     String?        // "Standart Abonelik" gibi grup adı
+  
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   subscriptions Subscription[]
