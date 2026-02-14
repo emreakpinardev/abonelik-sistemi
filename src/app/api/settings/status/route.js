@@ -37,12 +37,24 @@ export async function GET() {
     // Shopify API baglanti testi
     if (result.hasShopDomain && result.hasAccessToken) {
         try {
+            // Scopes
+            const scopeRes = await fetch(
+                `https://${result.shopDomain}/admin/oauth/access_scopes.json`,
+                { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } }
+            );
+            if (scopeRes.ok) {
+                const scopeData = await scopeRes.json();
+                result.scopes = scopeData.access_scopes.map(s => s.handle);
+            }
+
             const res = await fetch(
                 `https://${result.shopDomain}/admin/api/2024-10/shop.json`,
                 { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } }
             );
             result.apiConnected = res.ok;
-        } catch { }
+        } catch (e) {
+            console.error(e);
+        }
     }
 
     // Veritabani baglanti testi

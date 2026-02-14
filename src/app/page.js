@@ -502,6 +502,23 @@ export default function AdminDashboard() {
             </div>
             <div style={{ marginTop: 20 }}>
               <h4>Sistem Durumu</h4>
+
+              {envStatus && envStatus.scopes && (
+                <div style={{ marginBottom: 10, padding: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6 }}>
+                  <h5 style={{ margin: '0 0 5px', fontSize: 13, color: '#166534' }}>Aktif İzinler (Scopes)</h5>
+                  <div style={{ fontSize: 12, color: '#166534', display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {envStatus.scopes.map(s => (
+                      <span key={s} style={{ background: '#fff', padding: '2px 6px', borderRadius: 4, border: '1px solid #bbf7d0' }}>{s}</span>
+                    ))}
+                  </div>
+                  {!envStatus.scopes.includes('write_script_tags') && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
+                      ⚠️ EKSİK İZİN: write_script_tags (Widget yüklemek için gerekli)
+                    </div>
+                  )}
+                </div>
+              )}
+
               <pre style={{ fontSize: 12, background: '#f5f5f5', padding: 10, borderRadius: 5 }}>
                 {JSON.stringify(envStatus, null, 2)}
               </pre>
