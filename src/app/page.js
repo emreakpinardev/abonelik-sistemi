@@ -190,7 +190,6 @@ export default function AdminDashboard() {
   if (!isAuthenticated) {
     return (
       <div style={st.page}>
-        <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
         <div style={st.loginBox}>
           <span className="material-icons-outlined" style={{ fontSize: 40, color: '#16a34a', marginBottom: 12 }}>admin_panel_settings</span>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 4px' }}>Abonelik Yönetimi</h2>
@@ -209,7 +208,6 @@ export default function AdminDashboard() {
   // ===== DASHBOARD =====
   return (
     <div style={st.page}>
-      <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
       <div style={st.container}>
         {/* Header */}
         <div style={st.header}>
