@@ -33,10 +33,20 @@ export async function GET(request) {
             orderBy: { price: 'asc' },
         });
 
-        return NextResponse.json({ plans });
+        const response = NextResponse.json({ plans });
+        response.headers.set('Access-Control-Allow-Origin', '*');
+        return response;
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
+}
+
+export async function OPTIONS() {
+    const response = new NextResponse(null, { status: 204 });
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return response;
 }
 
 /**
