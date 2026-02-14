@@ -15,8 +15,6 @@ export default function AdminDashboard() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [stats, setStats] = useState({});
   const [envStatus, setEnvStatus] = useState(null);
-  const [scriptInstalled, setScriptInstalled] = useState(false);
-  const [installing, setInstalling] = useState(false);
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -50,7 +48,6 @@ export default function AdminDashboard() {
     fetchPlans();
     fetchSubscriptions();
     fetchEnvStatus();
-    fetchScriptStatus();
   }, [isAuthenticated]);
 
   // Fetch Products when tab changes or search
@@ -118,33 +115,7 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
-  async function fetchScriptStatus() {
-    try {
-      const res = await fetch('/api/shopify/scripttag');
-      const data = await res.json();
-      setScriptInstalled(data.installed);
-    } catch { }
-  }
 
-  async function handleInstallScript() {
-    if (!confirm('Widget servisi mağazaya eklenecek. Onaylıyor musunuz?')) return;
-    setInstalling(true);
-    try {
-      const res = await fetch('/api/shopify/scripttag', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setScriptInstalled(true);
-        alert('Widget başarıyla yüklendi!');
-      } else {
-        let msg = 'Hata: ' + (data.error || 'Bilinmeyen hata');
-        if (data.details) msg += '\nDetay: ' + JSON.stringify(data.details);
-        alert(msg);
-      }
-    } catch (err) {
-      alert('Hata: ' + err.message);
-    }
-    setInstalling(false);
-  }
 
   async function fetchEnvStatus() {
     try {
@@ -524,16 +495,7 @@ export default function AdminDashboard() {
               </pre>
             </div>
 
-            <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #eee' }}>
-              <h4>Mağaza Entegrasyonu (Widget)</h4>
-              <p style={{ fontSize: 13, color: '#666', marginBottom: 10 }}>Ürün sayfalarında abonelik butonlarının görünmesi için widget'ı yükleyin.</p>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button onClick={handleInstallScript} style={{ ...st.btnPrimary, background: scriptInstalled ? '#059669' : '#2563eb' }}>
-                  {scriptInstalled ? 'Widget Yüklü (Tekrar Yükle)' : 'Widget\'ı Mağazaya Yükle'}
-                </button>
-                {scriptInstalled && <span style={{ color: '#059669', fontWeight: 600, fontSize: 13 }}>✓ Aktif</span>}
-              </div>
-            </div>
+
           </div>
         )}
       </div>
