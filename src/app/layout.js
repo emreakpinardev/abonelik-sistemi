@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Providers } from "@/components/Providers";
 
 export const metadata = {
   title: "Abonelik Yönetimi - iyzico + Shopify",
@@ -11,7 +12,9 @@ export default function RootLayout({ children }) {
       <head>
         <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
       </head>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

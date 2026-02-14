@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
+    "@shopify/app-bridge-react": "^4.2.10",
+    "@shopify/app-bridge-types": "^0.7.0",
+    "@shopify/app-bridge-utils": "^3.5.1",
     "iyzipay": "^2.0.65",
     "next": "16.1.6",
     "postman-request": "^2.88.1-postman.48",
