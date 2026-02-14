@@ -69,12 +69,66 @@ export async function GET(request) {
         DO UPDATE SET "accessToken" = $2, "scopes" = $3
       `, shop, accessToken, tokenData.scope || '');
     } catch (dbError) {
-      console.error('Token veritabanına kaydedilemedi (sorun değil, .env kullanılabilir):', dbError.message);
+      console.error('Token veritabanına kaydedilemedi:', dbError.message);
     }
 
-    // Admin panele yönlendir
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // ============================================================
+    // OTOMATIK SCRIPT YUKLEME (buttons.js)
+    // ============================================================
+    let scriptStatus = 'Script yüklenemedi';
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
+      const scriptUrl = `${appUrl}/api/script/buttons.js`;
 
+      // 1. Mevcut scriptleri kontrol et ve temizle
+      const listRes = await fetch(`https://${shop}/admin/api/2024-01/script_tags.json`, {
+        headers: { 'X-Shopify-Access-Token': accessToken }
+      });
+
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        if (listData.script_tags) {
+          for (const tag of listData.script_tags) {
+            if (tag.src.includes('/api/script/buttons.js')) {
+              await fetch(`https://${shop}/admin/api/2024-01/script_tags/${tag.id}.json`, {
+                method: 'DELETE',
+                headers: { 'X-Shopify-Access-Token': accessToken }
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Yeni scripti ekle
+      const installRes = await fetch(`https://${shop}/admin/api/2024-01/script_tags.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          script_tag: {
+            event: 'onload',
+            src: scriptUrl,
+            display_scope: 'online_store'
+          }
+        })
+      });
+
+      if (installRes.ok) {
+        scriptStatus = '✅ Script mağazaya başarıyla eklendi!';
+        console.log('Script installed successfully');
+      } else {
+        const err = await installRes.json();
+        scriptStatus = '❌ Script eklenirken hata: ' + JSON.stringify(err);
+        console.error('Script install error:', err);
+      }
+    } catch (scriptErr) {
+      scriptStatus = '❌ Script hatası: ' + scriptErr.message;
+      console.error('Script installation exception:', scriptErr);
+    }
+
+    // Admin panele yönlendir (Settings sayfasina)
     return new Response(`
       <!DOCTYPE html>
       <html>
@@ -84,11 +138,15 @@ export async function GET(request) {
             <h1 style="font-size: 48px; margin-bottom: 16px;">✅</h1>
             <h2 style="margin-bottom: 8px;">Kurulum Başarılı!</h2>
             <p style="color: #9494a8; margin-bottom: 8px;">Mağaza: ${shop}</p>
-            <p style="color: #6c5ce7; font-weight: bold; margin-bottom: 24px;">Access Token alındı ve kaydedildi.</p>
+            <p style="color: #6c5ce7; font-weight: bold; margin-bottom: 24px;">Access Token alındı.</p>
+            <p style="background: #1a1a2e; padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 24px;">
+              ${scriptStatus}
+            </p>
             <p style="background: #1a1a2e; padding: 16px; border-radius: 8px; font-size: 13px; word-break: break-all; border: 1px solid #2d2d44; margin-bottom: 24px;">
               <strong>Token:</strong><br/>${accessToken}
             </p>
             <p style="color: #ff6b6b; font-size: 13px;">⚠️ Bu tokeni güvenli bir yere kopyalayın ve .env dosyanıza ekleyin!</p>
+            <a href="/" style="display:inline-block; padding:12px 24px; background:#5c6ac4; color:white; text-decoration:none; border-radius:6px; font-weight:bold; margin-top:10px;">Ayarlar Sayfasına Dön</a>
           </div>
         </body>
       </html>
