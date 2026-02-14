@@ -8,17 +8,19 @@ function PortalContent() {
     const searchParams = useSearchParams();
     const emailFromUrl = searchParams.get('email') || '';
 
-    const [email, setEmail] = useState(emailFromUrl);
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [email] = useState(emailFromUrl);
     const [subscriptions, setSubscriptions] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [msg, setMsg] = useState(null);
-    const [activeTab, setActiveTab] = useState('overview'); // overview | payments | settings
+    const [activeTab, setActiveTab] = useState('overview');
+    const [noSub, setNoSub] = useState(false);
 
-    // Auto-login if email comes from Shopify
     useEffect(() => {
         if (emailFromUrl) {
             fetchSubscriptions(emailFromUrl);
+        } else {
+            setLoading(false);
+            setNoSub(true);
         }
     }, [emailFromUrl]);
 
@@ -30,21 +32,13 @@ function PortalContent() {
             const data = await res.json();
             if (data.subscriptions && data.subscriptions.length > 0) {
                 setSubscriptions(data.subscriptions);
-                setIsLoggedIn(true);
-                setEmail(targetEmail);
             } else {
-                setMsg({ type: 'error', text: 'Bu e-posta adresine ait abonelik bulunamadı.' });
+                setNoSub(true);
             }
         } catch (err) {
             setMsg({ type: 'error', text: 'Bağlantı hatası: ' + err.message });
         }
         setLoading(false);
-    }
-
-    async function handleLogin(e) {
-        e.preventDefault();
-        if (!email) return;
-        fetchSubscriptions(email);
     }
 
     async function handleUpdateFreq(subId, newFreq) {
@@ -107,64 +101,51 @@ function PortalContent() {
         }
     }
 
-    // ---------- LOGIN SCREEN ----------
-    if (!isLoggedIn) {
+    // Loading
+    if (loading) {
         return (
-            <div style={s.page}>
-                <div style={s.container}>
-                    <div style={s.loginCard}>
-                        <div style={s.loginIcon}>🌱</div>
-                        <h2 style={s.loginTitle}>Abonelik Paneli</h2>
-                        <p style={s.loginDesc}>Aboneliklerinizi görüntüleyin ve yönetin</p>
+            <div style={st.page}>
+                <div style={st.loadingBox}>
+                    <div style={st.spinner}></div>
+                    <p style={{ color: '#64748b', marginTop: 16 }}>Abonelikleriniz yükleniyor...</p>
+                </div>
+            </div>
+        );
+    }
 
-                        {msg && <MsgBox msg={msg} />}
-
-                        <form onSubmit={handleLogin} style={{ width: '100%' }}>
-                            <label style={s.inputLabel}>E-posta Adresiniz</label>
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="ornek@email.com"
-                                style={s.input}
-                                required
-                            />
-                            <button type="submit" style={s.btnPrimary} disabled={loading}>
-                                {loading ? (
-                                    <span>⏳ Yükleniyor...</span>
-                                ) : (
-                                    <span>Giriş Yap</span>
-                                )}
-                            </button>
-                        </form>
+    // No subscription found
+    if (noSub) {
+        return (
+            <div style={st.page}>
+                <div style={st.container}>
+                    <div style={st.emptyCard}>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
+                        <h2 style={st.emptyTitle}>Abonelik Bulunamadı</h2>
+                        <p style={st.emptyDesc}>
+                            {emailFromUrl
+                                ? 'Bu hesaba ait aktif bir abonelik bulunamadı.'
+                                : 'Abonelik bilgilerinizi görüntülemek için lütfen hesabınıza giriş yapın.'}
+                        </p>
+                        {!emailFromUrl && (
+                            <a href="/account/login" style={st.btnPrimary}>Giriş Yap</a>
+                        )}
                     </div>
                 </div>
             </div>
         );
     }
 
-    // ---------- DASHBOARD ----------
+    // Dashboard
     const activeSubs = subscriptions.filter(s => s.status === 'ACTIVE');
     const otherSubs = subscriptions.filter(s => s.status !== 'ACTIVE');
 
     return (
-        <div style={s.page}>
-            <div style={s.container}>
-                {/* Header */}
-                <div style={s.dashHeader}>
-                    <div>
-                        <h2 style={s.dashTitle}>Hoş Geldiniz 👋</h2>
-                        <p style={s.dashEmail}>{email}</p>
-                    </div>
-                    <button onClick={() => { setIsLoggedIn(false); setSubscriptions([]); }} style={s.btnLogout}>
-                        Çıkış
-                    </button>
-                </div>
-
+        <div style={st.page}>
+            <div style={st.container}>
                 {msg && <MsgBox msg={msg} />}
 
                 {/* Tabs */}
-                <div style={s.tabs}>
+                <div style={st.tabs}>
                     {[
                         { key: 'overview', label: '📦 Abonelikler' },
                         { key: 'payments', label: '💳 Ödeme Geçmişi' },
@@ -173,7 +154,7 @@ function PortalContent() {
                         <button
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
-                            style={activeTab === tab.key ? s.tabActive : s.tab}
+                            style={activeTab === tab.key ? st.tabActive : st.tab}
                         >
                             {tab.label}
                         </button>
@@ -184,20 +165,13 @@ function PortalContent() {
                 {activeTab === 'overview' && (
                     <>
                         {activeSubs.length > 0 && (
-                            <div style={s.sectionLabel}>Aktif Abonelikler</div>
+                            <div style={st.sectionLabel}>Aktif Abonelikler</div>
                         )}
                         {activeSubs.map(sub => (
-                            <SubCard
-                                key={sub.id}
-                                sub={sub}
-                                onUpdateFreq={handleUpdateFreq}
-                                onCancel={handleCancel}
-                                onUpdatePayment={handleUpdatePayment}
-                            />
+                            <SubCard key={sub.id} sub={sub} onUpdateFreq={handleUpdateFreq} onCancel={handleCancel} onUpdatePayment={handleUpdatePayment} />
                         ))}
-
                         {otherSubs.length > 0 && (
-                            <div style={{ ...s.sectionLabel, marginTop: 30 }}>Geçmiş Abonelikler</div>
+                            <div style={{ ...st.sectionLabel, marginTop: 24 }}>Geçmiş Abonelikler</div>
                         )}
                         {otherSubs.map(sub => (
                             <SubCard key={sub.id} sub={sub} />
@@ -207,61 +181,61 @@ function PortalContent() {
 
                 {/* TAB: Payments */}
                 {activeTab === 'payments' && (
-                    <div style={s.card}>
-                        <h3 style={s.cardTitle}>Ödeme Geçmişi</h3>
+                    <div style={st.card}>
+                        <h3 style={st.cardTitle}>Ödeme Geçmişi</h3>
                         {subscriptions.some(sub => sub.payments?.length > 0) ? (
-                            <table style={s.table}>
-                                <thead>
-                                    <tr>
-                                        <th style={s.th}>Tarih</th>
-                                        <th style={s.th}>Paket</th>
-                                        <th style={s.th}>Tutar</th>
-                                        <th style={s.th}>Durum</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {subscriptions.flatMap(sub =>
-                                        (sub.payments || []).map(p => (
-                                            <tr key={p.id}>
-                                                <td style={s.td}>{formatDate(p.createdAt)}</td>
-                                                <td style={s.td}>{sub.plan?.name || '-'}</td>
-                                                <td style={s.td}>{p.amount} ₺</td>
-                                                <td style={s.td}>
-                                                    <span style={p.status === 'SUCCESS' ? s.badgeSuccess : s.badgeFail}>
-                                                        {p.status === 'SUCCESS' ? 'Başarılı' : 'Başarısız'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={st.table}>
+                                    <thead>
+                                        <tr>
+                                            <th style={st.th}>Tarih</th>
+                                            <th style={st.th}>Paket</th>
+                                            <th style={st.th}>Tutar</th>
+                                            <th style={st.th}>Durum</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {subscriptions.flatMap(sub =>
+                                            (sub.payments || []).map(p => (
+                                                <tr key={p.id}>
+                                                    <td style={st.td}>{formatDate(p.createdAt)}</td>
+                                                    <td style={st.td}>{sub.plan?.name || '-'}</td>
+                                                    <td style={st.td}><strong>{p.amount} ₺</strong></td>
+                                                    <td style={st.td}>
+                                                        <span style={p.status === 'SUCCESS' ? st.badgeSuccess : st.badgeFail}>
+                                                            {p.status === 'SUCCESS' ? 'Başarılı' : 'Başarısız'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         ) : (
-                            <p style={s.emptyText}>Henüz ödeme kaydı bulunmuyor.</p>
+                            <p style={st.emptyText}>Henüz ödeme kaydı bulunmuyor.</p>
                         )}
                     </div>
                 )}
 
                 {/* TAB: Settings */}
                 {activeTab === 'settings' && (
-                    <div style={s.card}>
-                        <h3 style={s.cardTitle}>Ödeme Yöntemi</h3>
-                        <p style={s.settingsDesc}>
-                            Kayıtlı kart bilgilerinizi güncelleyebilirsiniz. "Kartımı Güncelle" butonuna tıklayarak yeni kart bilgilerinizi girebilirsiniz.
-                        </p>
+                    <div style={st.card}>
+                        <h3 style={st.cardTitle}>Ödeme Yöntemi</h3>
+                        <p style={st.settingsDesc}>Kayıtlı kart bilgilerinizi güncelleyebilirsiniz.</p>
                         {activeSubs.map(sub => (
-                            <div key={sub.id} style={s.paymentUpdateRow}>
+                            <div key={sub.id} style={st.paymentRow}>
                                 <div>
-                                    <div style={s.paymentPlanName}>{sub.plan?.name || 'Abonelik'}</div>
-                                    <div style={s.paymentPlanPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</div>
+                                    <div style={st.paymentName}>{sub.plan?.name || 'Abonelik'}</div>
+                                    <div style={st.paymentPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</div>
                                 </div>
-                                <button onClick={() => handleUpdatePayment(sub.id)} style={s.btnUpdate}>
+                                <button onClick={() => handleUpdatePayment(sub.id)} style={st.btnUpdate}>
                                     💳 Kartımı Güncelle
                                 </button>
                             </div>
                         ))}
                         {activeSubs.length === 0 && (
-                            <p style={s.emptyText}>Aktif aboneliğiniz bulunmuyor.</p>
+                            <p style={st.emptyText}>Aktif aboneliğiniz bulunmuyor.</p>
                         )}
                     </div>
                 )}
@@ -270,37 +244,28 @@ function PortalContent() {
     );
 }
 
-// ---------- SUB COMPONENTS ----------
-
 function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
     const isActive = sub.status === 'ACTIVE';
-
     return (
-        <div style={s.card}>
-            <div style={s.cardHeader}>
+        <div style={st.card}>
+            <div style={st.cardHeader}>
                 <div>
-                    <h3 style={s.subName}>{sub.plan?.name || 'Abonelik'}</h3>
-                    <span style={s.subPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</span>
+                    <h3 style={st.subName}>{sub.plan?.name || 'Abonelik'}</h3>
+                    <span style={st.subPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</span>
                 </div>
                 <Badge status={sub.status} />
             </div>
-
-            <div style={s.infoGrid}>
-                <InfoItem icon="📅" label="Sonraki Ödeme" value={formatDate(sub.nextPaymentDate)} />
-                <InfoItem icon="📆" label="Başlangıç" value={formatDate(sub.startDate)} />
-                <InfoItem icon="🔄" label="Dönem Sonu" value={formatDate(sub.currentPeriodEnd)} />
-                <InfoItem icon="📊" label="Durum" value={sub.status === 'ACTIVE' ? 'Aktif' : sub.status === 'CANCELLED' ? 'İptal' : sub.status} />
+            <div style={st.infoGrid}>
+                <InfoItem label="Sonraki Ödeme" value={formatDate(sub.nextPaymentDate)} />
+                <InfoItem label="Başlangıç" value={formatDate(sub.startDate)} />
+                <InfoItem label="Dönem Sonu" value={formatDate(sub.currentPeriodEnd)} />
+                <InfoItem label="Durum" value={isActive ? 'Aktif' : sub.status === 'CANCELLED' ? 'İptal Edildi' : sub.status} />
             </div>
-
             {isActive && onUpdateFreq && (
-                <div style={s.actionsContainer}>
-                    <div style={s.freqSection}>
-                        <label style={s.freqLabel}>Teslimat Sıklığı</label>
-                        <select
-                            style={s.select}
-                            defaultValue={getFreqValue(sub.plan)}
-                            onChange={(e) => onUpdateFreq(sub.id, e.target.value)}
-                        >
+                <div style={st.actionsBox}>
+                    <div style={st.freqSection}>
+                        <label style={st.freqLabel}>Teslimat Sıklığı</label>
+                        <select style={st.select} defaultValue={getFreqValue(sub.plan)} onChange={(e) => onUpdateFreq(sub.id, e.target.value)}>
                             <option value="1_week">Haftada bir</option>
                             <option value="2_week">2 haftada bir</option>
                             <option value="3_week">3 haftada bir</option>
@@ -309,15 +274,11 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                             <option value="3_month">3 ayda bir</option>
                         </select>
                     </div>
-                    <div style={s.btnRow}>
+                    <div style={st.btnRow}>
                         {onUpdatePayment && (
-                            <button onClick={() => onUpdatePayment(sub.id)} style={s.btnUpdate}>
-                                💳 Kart Güncelle
-                            </button>
+                            <button onClick={() => onUpdatePayment(sub.id)} style={st.btnUpdate}>💳 Kart Güncelle</button>
                         )}
-                        <button onClick={() => onCancel(sub.id)} style={s.btnDanger}>
-                            İptal Et
-                        </button>
+                        <button onClick={() => onCancel(sub.id)} style={st.btnDanger}>İptal Et</button>
                     </div>
                 </div>
             )}
@@ -325,37 +286,31 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
     );
 }
 
-function InfoItem({ icon, label, value }) {
+function InfoItem({ label, value }) {
     return (
-        <div style={s.infoItem}>
-            <span style={s.infoIcon}>{icon}</span>
-            <div>
-                <div style={s.infoLabel}>{label}</div>
-                <div style={s.infoValue}>{value}</div>
-            </div>
+        <div style={st.infoItem}>
+            <div style={st.infoLabel}>{label}</div>
+            <div style={st.infoValue}>{value}</div>
         </div>
     );
 }
 
 function Badge({ status }) {
     const map = {
-        ACTIVE: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e', label: 'Aktif' },
-        CANCELLED: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'İptal' },
-        PAUSED: { bg: 'rgba(234,179,8,0.15)', color: '#eab308', label: 'Durduruldu' },
+        ACTIVE: { bg: '#dcfce7', color: '#166534', label: 'Aktif' },
+        CANCELLED: { bg: '#fee2e2', color: '#991b1b', label: 'İptal' },
+        PAUSED: { bg: '#fef3c7', color: '#92400e', label: 'Durduruldu' },
     };
-    const c = map[status] || { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8', label: status };
-    return (
-        <span style={{ background: c.bg, color: c.color, padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>
-            {c.label}
-        </span>
-    );
+    const c = map[status] || { bg: '#f1f5f9', color: '#475569', label: status };
+    return <span style={{ background: c.bg, color: c.color, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>{c.label}</span>;
 }
 
 function MsgBox({ msg }) {
-    const bgMap = { error: 'rgba(239,68,68,0.12)', success: 'rgba(34,197,94,0.12)', info: 'rgba(59,130,246,0.12)' };
-    const colorMap = { error: '#ef4444', success: '#22c55e', info: '#3b82f6' };
+    const bgMap = { error: '#fef2f2', success: '#f0fdf4', info: '#eff6ff' };
+    const colorMap = { error: '#dc2626', success: '#16a34a', info: '#2563eb' };
+    const borderMap = { error: '#fecaca', success: '#bbf7d0', info: '#bfdbfe' };
     return (
-        <div style={{ background: bgMap[msg.type] || bgMap.info, color: colorMap[msg.type] || colorMap.info, padding: 14, borderRadius: 10, marginBottom: 20, fontSize: 14, fontWeight: 500, border: `1px solid ${colorMap[msg.type] || colorMap.info}22` }}>
+        <div style={{ background: bgMap[msg.type], color: colorMap[msg.type], border: `1px solid ${borderMap[msg.type]}`, padding: 14, borderRadius: 10, marginBottom: 20, fontSize: 14, fontWeight: 500 }}>
             {msg.text}
         </div>
     );
@@ -370,85 +325,68 @@ function getFreqValue(plan) {
     if (!plan) return '1_month';
     if (plan.interval === 'WEEKLY') return plan.intervalCount + '_week';
     if (plan.interval === 'QUARTERLY') return '3_month';
-    if (plan.interval === 'YEARLY') return '12_month';
     return plan.intervalCount + '_month';
 }
 
 function getFreqLabel(plan) {
-    if (!plan) return 'Aylık';
     const map = { '1_week': 'Haftalık', '2_week': '2 Hafta', '3_week': '3 Hafta', '1_month': 'Aylık', '2_month': '2 Ay', '3_month': '3 Ay' };
     return map[getFreqValue(plan)] || 'Aylık';
 }
 
-// ---------- STYLES ----------
-const s = {
-    page: { minHeight: '100vh', background: 'transparent', fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", color: '#e2e8f0', padding: '0' },
+// ---- STYLES (White/Light Theme) ----
+const st = {
+    page: { minHeight: '60vh', background: 'transparent', fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", color: '#1e293b', padding: 0 },
     container: { maxWidth: 640, margin: '0 auto', padding: '20px 16px' },
 
-    // Login
-    loginCard: { background: 'rgba(30,41,59,0.85)', backdropFilter: 'blur(12px)', borderRadius: 16, padding: '40px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', border: '1px solid rgba(148,163,184,0.1)' },
-    loginIcon: { fontSize: 48, marginBottom: 16 },
-    loginTitle: { fontSize: 22, fontWeight: 700, margin: '0 0 6px', color: '#f1f5f9' },
-    loginDesc: { fontSize: 14, color: '#94a3b8', marginBottom: 28 },
-    inputLabel: { display: 'block', fontSize: 13, fontWeight: 500, color: '#94a3b8', marginBottom: 6, textAlign: 'left' },
-    input: { width: '100%', padding: '12px 16px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, color: '#f1f5f9', fontSize: 15, outline: 'none', marginBottom: 16, boxSizing: 'border-box' },
-    btnPrimary: { width: '100%', padding: '13px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' },
+    loadingBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' },
+    spinner: { width: 36, height: 36, border: '3px solid #e2e8f0', borderTopColor: '#16a34a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
 
-    // Dashboard Header
-    dashHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    dashTitle: { fontSize: 22, fontWeight: 700, margin: '0 0 4px', color: '#f1f5f9' },
-    dashEmail: { fontSize: 13, color: '#64748b' },
-    btnLogout: { padding: '8px 16px', background: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.15)', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
+    emptyCard: { background: '#fff', borderRadius: 16, padding: '48px 32px', textAlign: 'center', border: '1px solid #e2e8f0' },
+    emptyTitle: { fontSize: 20, fontWeight: 700, margin: '0 0 8px', color: '#1e293b' },
+    emptyDesc: { fontSize: 14, color: '#64748b', marginBottom: 24 },
 
-    // Tabs
-    tabs: { display: 'flex', gap: 4, marginBottom: 24, background: 'rgba(15,23,42,0.4)', borderRadius: 12, padding: 4 },
-    tab: { flex: 1, padding: '10px 0', background: 'transparent', color: '#64748b', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, transition: 'all 0.2s' },
-    tabActive: { flex: 1, padding: '10px 0', background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    tabs: { display: 'flex', gap: 4, marginBottom: 24, background: '#f1f5f9', borderRadius: 12, padding: 4 },
+    tab: { flex: 1, padding: '10px 0', background: 'transparent', color: '#64748b', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    tabActive: { flex: 1, padding: '10px 0', background: '#fff', color: '#16a34a', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
 
-    sectionLabel: { fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
+    sectionLabel: { fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
 
-    // Cards
-    card: { background: 'rgba(30,41,59,0.7)', backdropFilter: 'blur(8px)', borderRadius: 14, padding: 24, marginBottom: 16, border: '1px solid rgba(148,163,184,0.08)' },
+    card: { background: '#fff', borderRadius: 14, padding: 24, marginBottom: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
     cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-    cardTitle: { fontSize: 16, fontWeight: 600, margin: '0 0 16px', color: '#f1f5f9' },
-    subName: { fontSize: 16, fontWeight: 600, margin: '0 0 4px', color: '#f1f5f9' },
-    subPrice: { fontSize: 13, color: '#22c55e', fontWeight: 500 },
+    cardTitle: { fontSize: 16, fontWeight: 600, margin: '0 0 16px', color: '#1e293b' },
+    subName: { fontSize: 16, fontWeight: 600, margin: '0 0 4px', color: '#1e293b' },
+    subPrice: { fontSize: 13, color: '#16a34a', fontWeight: 500 },
 
-    // Info Grid
     infoGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 },
-    infoItem: { display: 'flex', gap: 10, alignItems: 'flex-start' },
-    infoIcon: { fontSize: 18, lineHeight: 1 },
-    infoLabel: { fontSize: 11, color: '#64748b', marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
-    infoValue: { fontSize: 14, fontWeight: 500, color: '#e2e8f0' },
+    infoItem: { padding: '10px 12px', background: '#f8fafc', borderRadius: 8 },
+    infoLabel: { fontSize: 11, color: '#94a3b8', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 500 },
+    infoValue: { fontSize: 14, fontWeight: 600, color: '#334155' },
 
-    // Actions
-    actionsContainer: { background: 'rgba(15,23,42,0.4)', borderRadius: 10, padding: 16 },
+    actionsBox: { background: '#f8fafc', borderRadius: 10, padding: 16, border: '1px solid #f1f5f9' },
     freqSection: { marginBottom: 14 },
-    freqLabel: { display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6, fontWeight: 500 },
-    select: { width: '100%', padding: '10px 12px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 8, color: '#e2e8f0', fontSize: 14 },
+    freqLabel: { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6, fontWeight: 500 },
+    select: { width: '100%', padding: '10px 12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, color: '#334155', fontSize: 14 },
     btnRow: { display: 'flex', gap: 10 },
-    btnUpdate: { flex: 1, padding: '10px 16px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
-    btnDanger: { padding: '10px 16px', background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    btnPrimary: { display: 'inline-block', padding: '12px 28px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', textAlign: 'center' },
+    btnUpdate: { flex: 1, padding: '10px 16px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    btnDanger: { padding: '10px 16px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
 
-    // Table
     table: { width: '100%', borderCollapse: 'collapse' },
-    th: { textAlign: 'left', padding: '10px 12px', fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid rgba(148,163,184,0.1)' },
-    td: { padding: '12px', fontSize: 14, color: '#cbd5e1', borderBottom: '1px solid rgba(148,163,184,0.06)' },
-    badgeSuccess: { background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 500 },
-    badgeFail: { background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 500 },
+    th: { textAlign: 'left', padding: '10px 12px', fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '2px solid #f1f5f9' },
+    td: { padding: '12px', fontSize: 14, color: '#475569', borderBottom: '1px solid #f8fafc' },
+    badgeSuccess: { background: '#dcfce7', color: '#166534', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 500 },
+    badgeFail: { background: '#fee2e2', color: '#991b1b', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 500 },
 
-    // Settings
-    settingsDesc: { fontSize: 14, color: '#94a3b8', marginBottom: 20, lineHeight: 1.6 },
-    paymentUpdateRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, background: 'rgba(15,23,42,0.4)', borderRadius: 10, marginBottom: 10 },
-    paymentPlanName: { fontSize: 14, fontWeight: 600, color: '#f1f5f9', marginBottom: 2 },
-    paymentPlanPrice: { fontSize: 13, color: '#22c55e' },
-
-    emptyText: { textAlign: 'center', color: '#64748b', padding: 20, fontSize: 14 },
+    settingsDesc: { fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.6 },
+    paymentRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, background: '#f8fafc', borderRadius: 10, marginBottom: 10 },
+    paymentName: { fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 2 },
+    paymentPrice: { fontSize: 13, color: '#16a34a' },
+    emptyText: { textAlign: 'center', color: '#94a3b8', padding: 20, fontSize: 14 },
 };
 
 export default function CustomerPortalPage() {
     return (
-        <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Yükleniyor...</div>}>
+        <Suspense fallback={<div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Yükleniyor...</div>}>
             <PortalContent />
         </Suspense>
     );

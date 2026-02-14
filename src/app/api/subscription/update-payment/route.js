@@ -22,11 +22,10 @@ export async function POST(request) {
         const subscription = await prisma.subscription.findFirst({
             where: {
                 id: subscriptionId,
-                customer: { email },
+                customerEmail: email,
                 status: 'ACTIVE',
             },
             include: {
-                customer: true,
                 plan: true,
             },
         });
@@ -35,13 +34,11 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Aktif abonelik bulunamadi' }, { status: 404 });
         }
 
-        const customer = subscription.customer;
         const plan = subscription.plan;
         const basketId = uuidv4();
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        // iyzico checkout formunu baslat (0.01 TL ile kart dogrulama + kaydetme)
-        // Gercek odeme degil, sadece kart bilgilerini guncellemek icin
+        // iyzico checkout formunu baslat (1 TL ile kart dogrulama + kaydetme)
         const checkoutData = {
             locale: 'tr',
             conversationId: `card_update_${subscriptionId}`,
@@ -53,28 +50,28 @@ export async function POST(request) {
             callbackUrl: `${appUrl}/api/iyzico/callback?type=card_update&subscriptionId=${subscriptionId}`,
             enabledInstallments: [1],
             buyer: {
-                id: customer.shopifyCustomerId || customer.id,
-                name: customer.firstName || 'Musteri',
-                surname: customer.lastName || 'Kullanici',
-                gsmNumber: customer.phone || '+905000000000',
-                email: customer.email,
+                id: subscription.shopifyCustomerId || subscription.id,
+                name: subscription.customerName?.split(' ')[0] || 'Musteri',
+                surname: subscription.customerName?.split(' ').slice(1).join(' ') || 'Kullanici',
+                gsmNumber: subscription.customerPhone || '+905000000000',
+                email: subscription.customerEmail,
                 identityNumber: '11111111111',
-                registrationAddress: customer.address || 'Istanbul',
-                ip: '85.34.78.112',
-                city: customer.city || 'Istanbul',
+                registrationAddress: subscription.customerAddress || 'Istanbul',
+                ip: subscription.customerIp || '85.34.78.112',
+                city: subscription.customerCity || 'Istanbul',
                 country: 'Turkey',
             },
             shippingAddress: {
-                contactName: `${customer.firstName || 'Musteri'} ${customer.lastName || 'Kullanici'}`,
-                city: customer.city || 'Istanbul',
+                contactName: subscription.customerName || 'Musteri',
+                city: subscription.customerCity || 'Istanbul',
                 country: 'Turkey',
-                address: customer.address || 'Istanbul',
+                address: subscription.customerAddress || 'Istanbul',
             },
             billingAddress: {
-                contactName: `${customer.firstName || 'Musteri'} ${customer.lastName || 'Kullanici'}`,
-                city: customer.city || 'Istanbul',
+                contactName: subscription.customerName || 'Musteri',
+                city: subscription.customerCity || 'Istanbul',
                 country: 'Turkey',
-                address: customer.address || 'Istanbul',
+                address: subscription.customerAddress || 'Istanbul',
             },
             basketItems: [
                 {
