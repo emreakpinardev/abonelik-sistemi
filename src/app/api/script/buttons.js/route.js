@@ -204,8 +204,7 @@ export async function GET() {
 
                 console.log('[SKYCROPS] 🛒 Checkout - Tip:', purchaseType, '| Frekans:', frequencyLabel || 'yok');
 
-                var cartData = {
-                    items: cart.items.map(function(item) {
+                var mappedItems = cart.items.map(function(item) {
                         var img = item.image || '';
                         if (img && !img.startsWith('http')) img = 'https:' + img;
 
@@ -219,6 +218,16 @@ export async function GET() {
                         if (hasSP || hasProp) {
                             purchaseType = 'subscription';
                         }
+
+                        var propPlanPrice = null;
+                        if (item.properties && item.properties._plan_price) {
+                            var raw = String(item.properties._plan_price).replace(',', '.').replace(/[^\d.]/g, '');
+                            var parsed = parseFloat(raw);
+                            if (!isNaN(parsed) && parsed > 0) propPlanPrice = parsed;
+                        }
+
+                        var effectiveUnitPrice = propPlanPrice !== null ? propPlanPrice : (item.price / 100);
+                        var effectiveLinePrice = (effectiveUnitPrice * item.quantity);
 
                         // Seal frekans bilgisi property'de olabilir
                         if (item.properties) {
@@ -241,8 +250,8 @@ export async function GET() {
                             variant_id: item.variant_id,
                             name: item.product_title,
                             variant: item.variant_title || '',
-                            price: (item.price / 100).toFixed(2),
-                            line_price: (item.line_price / 100).toFixed(2),
+                            price: effectiveUnitPrice.toFixed(2),
+                            line_price: effectiveLinePrice.toFixed(2),
                             quantity: item.quantity,
                             image: img,
                             sku: item.sku || '',
@@ -256,8 +265,15 @@ export async function GET() {
                                 name: item.selling_plan_allocation.selling_plan.name,
                             } : null
                         };
-                    }),
-                    total: (cart.total_price / 100).toFixed(2),
+                    });
+
+                var effectiveTotal = mappedItems.reduce(function(sum, item) {
+                    return sum + (parseFloat(item.line_price) || 0);
+                }, 0);
+
+                var cartData = {
+                    items: mappedItems,
+                    total: effectiveTotal.toFixed(2),
                     total_discount: ((cart.total_discount || 0) / 100).toFixed(2),
                     currency: cart.currency,
                     item_count: cart.item_count,
