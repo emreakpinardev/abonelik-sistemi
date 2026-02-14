@@ -254,10 +254,9 @@ export default function CheckoutPage() {
                                         shippingRates.map(rate => (
                                             <label key={rate.id} className={`co-shipping-opt ${shippingMethod === rate.id ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value={rate.id} checked={shippingMethod === rate.id} onChange={() => setShippingMethod(rate.id)} />
-                                                <div className="co-ship-icon"><Icon name={parseFloat(rate.price) === 0 ? 'inventory_2' : 'rocket_launch'} size={26} /></div>
+                                                <div className="co-ship-icon"><Icon name={parseFloat(rate.price) === 0 ? 'inventory_2' : 'local_shipping'} size={26} /></div>
                                                 <div className="co-ship-info">
                                                     <strong>{rate.name}</strong>
-                                                    {rate.delivery_days && <span>{rate.delivery_days}</span>}
                                                 </div>
                                                 <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ücretsiz' : `₺${parseFloat(rate.price).toFixed(2)}`}</div>
                                             </label>
@@ -268,13 +267,13 @@ export default function CheckoutPage() {
                                             <label className={`co-shipping-opt ${shippingMethod === 'free' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="free" checked={shippingMethod === 'free'} onChange={() => setShippingMethod('free')} />
                                                 <div className="co-ship-icon"><Icon name="inventory_2" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Ücretsiz Kargo</strong><span>7-10 İş Günü</span></div>
+                                                <div className="co-ship-info"><strong>Ücretsiz Kargo</strong></div>
                                                 <div className="co-ship-price">Ücretsiz</div>
                                             </label>
                                             <label className={`co-shipping-opt ${shippingMethod === 'express' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')} />
-                                                <div className="co-ship-icon"><Icon name="rocket_launch" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Hızlı Kargo</strong><span>1-3 İş Günü</span></div>
+                                                <div className="co-ship-icon"><Icon name="local_shipping" size={26} /></div>
+                                                <div className="co-ship-info"><strong>Hızlı Kargo</strong></div>
                                                 <div className="co-ship-price">₺49,90</div>
                                             </label>
                                         </>
