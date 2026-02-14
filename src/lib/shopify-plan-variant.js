@@ -79,11 +79,10 @@ export async function ensurePlanVariant({
     if (product.options.length >= 3) variantPayload.option3 = 'Default';
   }
 
-  const created = await shopifyREST('/variants.json', 'POST', { variant: variantPayload });
+  const created = await shopifyREST(`/products/${productId}/variants.json`, 'POST', { variant: variantPayload });
   const createdId = created?.variant?.id;
   if (!createdId) {
     throw new Error('Shopify variant olusturulamadi');
   }
   return String(createdId);
 }
-
