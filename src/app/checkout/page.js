@@ -104,15 +104,23 @@ export default function CheckoutPage() {
                 }),
             });
             const text = await res.text();
+            console.log('📡 API Yanıtı:', res.status, text);
             let data;
-            try { data = JSON.parse(text); } catch (e) { throw new Error(`Sunucu hatası (${res.status})`); }
+            try { data = JSON.parse(text); } catch (e) {
+                console.error('JSON parse hatası:', text);
+                alert(`Sunucu hatası (${res.status}): ${text.substring(0, 200)}`);
+                setSubmitting(false);
+                return;
+            }
             if (data.success && data.checkoutFormContent) {
                 setCheckoutHtml(data.checkoutFormContent);
             } else {
-                alert(data.error || 'Ödeme başlatılamadı');
+                console.error('❌ iyzico hatası:', data);
+                alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: ${data.details || ''}\nKod: ${data.errorCode || ''}`);
             }
         } catch (err) {
-            alert('Bir hata oluştu, lütfen tekrar deneyin');
+            console.error('❌ Fetch hatası:', err);
+            alert(`Bağlantı hatası: ${err.message}`);
         } finally {
             setSubmitting(false);
         }
