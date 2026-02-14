@@ -35,8 +35,44 @@ export async function POST(request) {
 
         if (type === 'subscription') {
             // ABONELIK ODEMESI
-            const plan = await prisma.plan.findUnique({ where: { id: planId } });
-            if (!plan) return NextResponse.json({ error: 'Plan bulunamadı' }, { status: 404 });
+            let plan;
+
+            if (planId) {
+                // Admin panelinden gelen abonelik (planId mevcut)
+                plan = await prisma.plan.findUnique({ where: { id: planId } });
+                if (!plan) return NextResponse.json({ error: 'Plan bulunamadı' }, { status: 404 });
+            } else if (productId) {
+                // Shopify urun sayfasindan gelen abonelik (planId yok, productId var)
+                // Oncelikle bu Shopify urunune bagli plan var mi kontrol et
+                plan = await prisma.plan.findFirst({
+                    where: { shopifyProductId: String(productId) }
+                });
+
+                // Plan yoksa otomatik olustur
+                if (!plan) {
+                    const autoPrice = parseFloat(productPrice) || 0;
+                    if (autoPrice <= 0) {
+                        return NextResponse.json({ error: 'Geçersiz fiyat' }, { status: 400 });
+                    }
+                    plan = await prisma.plan.create({
+                        data: {
+                            name: productName || 'Abonelik Planı',
+                            description: `Shopify ürünü: ${productName || productId}`,
+                            price: autoPrice,
+                            currency: 'TRY',
+                            interval: 'MONTHLY',
+                            intervalCount: 1,
+                            shopifyProductId: String(productId),
+                            shopifyVariantId: variantId ? String(variantId) : null,
+                            active: true,
+                        },
+                    });
+                    console.log('✅ Otomatik plan oluşturuldu:', plan.id, plan.name);
+                }
+            } else {
+                return NextResponse.json({ error: 'Abonelik için plan veya ürün bilgisi gerekli' }, { status: 400 });
+            }
+
             if (!plan.active) return NextResponse.json({ error: 'Bu plan artık aktif değil' }, { status: 400 });
 
             price = plan.price;
