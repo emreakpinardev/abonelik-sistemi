@@ -45,7 +45,11 @@ export default function AdminDashboard() {
       setActiveTab(tab);
     }
     if (oauth === 'success') {
+      sessionStorage.setItem('admin_auth', 'true');
+      setIsAuthenticated(true);
       alert('Shopify baglantisi tamamlandi. Token bilgisi Ayarlar alaninda gosterilecek.');
+      loadData();
+      return;
     }
 
     const auth = sessionStorage.getItem('admin_auth');
