@@ -38,6 +38,7 @@ export async function GET(request) {
 
         const data = await res.json();
         const zones = data.shipping_zones || [];
+        console.log('[Shipping] Zones bulundu:', zones.length, 'adet. Isimler:', zones.map(z => z.name).join(', '));
 
         // Turkiye icin uygun zone'u bul
         const rates = [];
@@ -91,8 +92,11 @@ export async function GET(request) {
             }
         }
 
+        console.log('[Shipping] Bulunan rate sayisi:', rates.length, rates.map(r => `${r.name}:${r.price}`).join(', '));
+
         // Eger hicbir rate bulamazsa varsayilanlari dondur
         if (rates.length === 0) {
+            console.log('[Shipping] Rate bulunamadi, varsayilan donuyor');
             return NextResponse.json({ rates: getDefaultRates() });
         }
 

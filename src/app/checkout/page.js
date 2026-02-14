@@ -53,11 +53,11 @@ export default function CheckoutPage() {
         setLoading(false);
     }, []);
 
-    // Shopify kargo yontemlerini cek
+    // Shopify kargo yontemlerini cek - cartData hazir olunca hemen cek
     useEffect(() => {
-        if (!cartData?.shop_url || !formData.city) return;
+        if (!cartData) return;
         fetchShippingRates();
-    }, [cartData?.shop_url, formData.city]);
+    }, [cartData, formData.city]);
 
     async function fetchShippingRates() {
         try {
