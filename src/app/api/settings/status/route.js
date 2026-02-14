@@ -29,6 +29,10 @@ export async function GET() {
         hasCronSecret: !!process.env.CRON_SECRET,
         hasAdminPassword: !!process.env.ADMIN_PASSWORD,
         dbConnected: false,
+        dbOAuthShop: null,
+        dbOAuthToken: null,
+        dbOAuthTokenLast4: null,
+        dbOAuthInstalledAt: null,
     };
 
     // iyzico ortam kontrolu
@@ -63,6 +67,25 @@ export async function GET() {
     try {
         await prisma.$queryRaw`SELECT 1`;
         result.dbConnected = true;
+
+        // OAuth ile kaydedilen son shop/token bilgisini getir
+        try {
+            const rows = await prisma.$queryRawUnsafe(`
+              SELECT "shop", "accessToken", "installedAt"
+              FROM "ShopifyStore"
+              ORDER BY "installedAt" DESC
+              LIMIT 1
+            `);
+            const last = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            if (last) {
+                result.dbOAuthShop = last.shop || null;
+                result.dbOAuthToken = last.accessToken || null;
+                result.dbOAuthTokenLast4 = last.accessToken ? String(last.accessToken).slice(-4) : null;
+                result.dbOAuthInstalledAt = last.installedAt || null;
+            }
+        } catch {
+            // ShopifyStore tablosu olmayabilir; sessiz gec
+        }
     } catch { }
 
     return NextResponse.json(result);

@@ -40,8 +40,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
+    const oauth = params.get('oauth');
     if (tab && ['templates', 'assignments', 'subscriptions', 'settings'].includes(tab)) {
       setActiveTab(tab);
+    }
+    if (oauth === 'success') {
+      alert('Shopify baglantisi tamamlandi. Token bilgisi Ayarlar alaninda gosterilecek.');
     }
 
     const auth = sessionStorage.getItem('admin_auth');
@@ -237,6 +241,16 @@ export default function AdminDashboard() {
     const domain = shopDomain.includes('.myshopify.com') ? shopDomain.trim() : shopDomain.trim() + '.myshopify.com';
     setOauthBusy(true);
     window.location.href = '/api/auth?shop=' + encodeURIComponent(domain);
+  }
+
+  async function copyDbToken() {
+    if (!envStatus?.dbOAuthToken) return;
+    try {
+      await navigator.clipboard.writeText(envStatus.dbOAuthToken);
+      alert('Token kopyalandi.');
+    } catch (e) {
+      alert('Token kopyalanamadi.');
+    }
   }
 
   // --- HELPERS ---
@@ -443,6 +457,11 @@ export default function AdminDashboard() {
               <p>Uygulama İzinleri: {envStatus?.scopes?.join(', ')}</p>
               <p>Environment: {envStatus?.hasShopifyClientId && envStatus?.hasShopifyClientSecret ? 'OK' : 'Missing Keys'}</p>
               <p>Store Token: {envStatus?.hasAccessToken ? 'OK' : 'Missing'}</p>
+              <p>OAuth Shop (DB): {envStatus?.dbOAuthShop || '-'}</p>
+              <p>OAuth Token (DB): {envStatus?.dbOAuthTokenLast4 ? ('***' + envStatus.dbOAuthTokenLast4) : 'Yok'}</p>
+              {envStatus?.dbOAuthToken && (
+                <button onClick={copyDbToken} style={{ ...st.btnSmall, marginTop: 8 }}>Tokeni Kopyala</button>
+              )}
             </div>
           </div>
         )}
