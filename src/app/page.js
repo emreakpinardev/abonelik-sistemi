@@ -317,7 +317,7 @@ export default function AdminDashboard() {
                     <div style={{ fontWeight: 600 }}>{t.name}</div>
                     <div style={{ fontSize: 12, color: '#666', margin: '5px 0' }}>{intervalLabel(t.interval, t.intervalCount)}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>{t.description}</div>
-                    <button onClick={() => handleDeletePlan(t.id)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', background: 'none', color: '#ccc', cursor: 'pointer' }}>×</button>
+                    <button onClick={() => handleDeletePlan(t.id)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: 4, padding: '2px 6px', cursor: 'pointer', fontSize: 11 }}>Sil</button>
                   </div>
                 ))}
                 {templates.length === 0 && <p style={{ color: '#999' }}>Henüz şablon yok.</p>}
