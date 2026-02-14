@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 
+const ALLOWED_CITIES = [
+    'Istanbul', 'Izmir', 'Ankara', 'Balikesir', 'Bartin', 'Bilecik', 'Bolu', 'Bursa',
+    'Canakkale', 'Cankiri', 'Edirne', 'Eskisehir', 'Karabuk', 'Kastamonu',
+    'Kirikkale', 'Kirklareli', 'Kocaeli', 'Kutahya', 'Manisa', 'Sakarya',
+    'Tekirdag', 'Usak', 'Yalova', 'Zonguldak'
+];
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -267,10 +274,15 @@ export default function CheckoutPage() {
                 const res = await fetch('/api/shopify/shipping-cities');
                 if (res.ok) {
                     const data = await res.json();
-                    setCities(data.cities || []);
+                    const incoming = Array.isArray(data.cities) ? data.cities : [];
+                    const filtered = incoming.filter(c => ALLOWED_CITIES.includes(c));
+                    setCities(filtered.length ? filtered : ALLOWED_CITIES);
+                } else {
+                    setCities(ALLOWED_CITIES);
                 }
             } catch (e) {
                 console.error('Sehirler alinamadi:', e);
+                setCities(ALLOWED_CITIES);
             }
         }
         fetchCities();
