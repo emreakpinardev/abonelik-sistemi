@@ -11,6 +11,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
     const result = {
         // Shopify
+        hasShopifyClientId: !!process.env.SHOPIFY_CLIENT_ID,
+        hasShopifyClientSecret: !!process.env.SHOPIFY_CLIENT_SECRET,
         shopDomain: process.env.SHOPIFY_STORE_DOMAIN || null,
         hasShopDomain: !!process.env.SHOPIFY_STORE_DOMAIN,
         hasAccessToken: !!process.env.SHOPIFY_ACCESS_TOKEN,

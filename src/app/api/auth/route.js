@@ -21,6 +21,9 @@ export async function GET(request) {
   }
 
   const clientId = process.env.SHOPIFY_CLIENT_ID;
+  if (!clientId) {
+    return NextResponse.json({ error: 'SHOPIFY_CLIENT_ID missing' }, { status: 500 });
+  }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
   const redirectUri = encodeURIComponent(`${appUrl}/api/auth/callback`);
   const scopes = 'write_orders,read_orders,read_products,write_customers,read_customers,read_script_tags,write_script_tags';

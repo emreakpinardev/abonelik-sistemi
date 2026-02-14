@@ -18,6 +18,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState({});
   const [shopDomain, setShopDomain] = useState('');
   const [envStatus, setEnvStatus] = useState({});
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,10 +95,10 @@ export default function AdminDashboard() {
 
   async function fetchEnv() {
     try {
-      const res = await fetch('/api/settings/env');
+      const res = await fetch('/api/settings/status');
       const data = await res.json();
-      if (data) {
-        setShopDomain(data.SHOPIFY_STORE_DOMAIN || '');
+      if (res.ok && data) {
+        setShopDomain(data.shopDomain || '');
         setEnvStatus(data);
       }
     } catch (e) { console.error(e); }
@@ -223,8 +224,13 @@ export default function AdminDashboard() {
 
   function startOAuth() {
     if (!shopDomain.trim()) { alert('Mağaza domainini girin'); return; }
+    if (!envStatus?.hasShopifyClientId || !envStatus?.hasShopifyClientSecret) {
+      alert('SHOPIFY_CLIENT_ID veya SHOPIFY_CLIENT_SECRET eksik. Once Vercel env degiskenlerini tamamlayin.');
+      return;
+    }
     const domain = shopDomain.includes('.myshopify.com') ? shopDomain.trim() : shopDomain.trim() + '.myshopify.com';
-    window.open('/api/auth?shop=' + encodeURIComponent(domain), '_blank');
+    setOauthBusy(true);
+    window.location.href = '/api/auth?shop=' + encodeURIComponent(domain);
   }
 
   // --- HELPERS ---
@@ -425,11 +431,12 @@ export default function AdminDashboard() {
             <h3>Ayarlar</h3>
             <div style={{ display: 'flex', gap: 10 }}>
               <input value={shopDomain} onChange={e => setShopDomain(e.target.value)} placeholder="magaza.myshopify.com" style={st.input} />
-              <button onClick={startOAuth} style={st.btnPrimary}>Shopify Bağlan</button>
+              <button onClick={startOAuth} style={st.btnPrimary} disabled={oauthBusy}>{oauthBusy ? 'Yonlendiriliyor...' : 'Shopify Bağlan'}</button>
             </div>
             <div style={{ marginTop: 20, fontSize: 13, color: '#666' }}>
               <p>Uygulama İzinleri: {envStatus?.scopes?.join(', ')}</p>
-              <p>Environment: {envStatus?.SHOPIFY_API_KEY ? 'OK' : 'Missing Keys'}</p>
+              <p>Environment: {envStatus?.hasShopifyClientId && envStatus?.hasShopifyClientSecret ? 'OK' : 'Missing Keys'}</p>
+              <p>Store Token: {envStatus?.hasAccessToken ? 'OK' : 'Missing'}</p>
             </div>
           </div>
         )}
