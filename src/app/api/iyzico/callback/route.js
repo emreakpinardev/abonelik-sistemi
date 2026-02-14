@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { retrieveCheckoutForm } from '@/lib/iyzico';
+import { retrieveCheckoutForm, refundPayment } from '@/lib/iyzico';
 import { createOrder, findCustomerByEmail, createCustomer } from '@/lib/shopify';
 import prisma from '@/lib/prisma';
 
@@ -32,6 +32,41 @@ export async function POST(request) {
                 return redirectToResult('success', 'Ödemeniz başarıyla tamamlandı!');
             } else {
                 return redirectToResult('error', paymentResult.errorMessage || 'Ödeme başarısız oldu');
+            }
+        }
+
+        // KART GUNCELLEME
+        if (paymentType === 'card_update') {
+            if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
+                // Kart bilgilerini guncelle
+                if (subscriptionId) {
+                    await prisma.subscription.update({
+                        where: { id: subscriptionId },
+                        data: {
+                            iyzicoCardToken: paymentResult.cardToken || null,
+                            iyzicoCardUserKey: paymentResult.cardUserKey || null,
+                        },
+                    });
+                }
+
+                // 1 TL'yi otomatik iade et
+                try {
+                    const transactionId = paymentResult.paymentItems?.[0]?.paymentTransactionId;
+                    if (transactionId) {
+                        const refundResult = await refundPayment({
+                            paymentTransactionId: transactionId,
+                            price: '1.00',
+                            conversationId: `refund_card_update_${subscriptionId}`,
+                        });
+                        console.log('Card update refund result:', refundResult);
+                    }
+                } catch (refundErr) {
+                    console.error('Card update refund error:', refundErr);
+                }
+
+                return redirectToResult('success', 'Kart bilgileriniz başarıyla güncellendi! 1 ₺ doğrulama ücreti iade edilecektir.');
+            } else {
+                return redirectToResult('error', paymentResult.errorMessage || 'Kart güncelleme başarısız oldu');
             }
         }
 

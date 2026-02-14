@@ -153,3 +153,18 @@ export async function retrieveCards(cardUserKey) {
 
     return await iyzicoRequest('/cardstorage/cards', body);
 }
+
+/**
+ * Odeme iadesi yap (refund)
+ */
+export async function refundPayment({ paymentTransactionId, price, currency = 'TRY', conversationId }) {
+    const body = {
+        locale: 'tr',
+        conversationId: conversationId || 'refund_' + Date.now(),
+        paymentTransactionId: paymentTransactionId,
+        price: price.toString(),
+        currency: currency,
+    };
+
+    return await iyzicoRequest('/payment/refund', body);
+}
