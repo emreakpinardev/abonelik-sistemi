@@ -130,6 +130,8 @@ export async function GET() {
     var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|ay|month|months)/i);
     if (m1) {
       var n = parseInt(m1[1], 10) || 1;
+      // Guard against plan/variant IDs accidentally parsed as frequency.
+      if (n < 1 || n > 12) n = 1;
       if (/(hafta|week)/i.test(m1[2])) return { code: n + '_week', label: n + ' haftada bir' };
       return { code: n + '_month', label: n + ' ayda bir' };
     }
@@ -213,6 +215,7 @@ export async function GET() {
             if (item.properties.shipping_interval_unit_type && item.properties.shipping_interval_frequency) {
               var unit = String(item.properties.shipping_interval_unit_type).toLowerCase();
               var freq = parseInt(item.properties.shipping_interval_frequency, 10) || 1;
+              if (freq < 1 || freq > 12) freq = 1;
               if (unit.indexOf('week') !== -1 || unit.indexOf('hafta') !== -1) pick(freq + '_week', freq + ' haftada bir', 3);
               if (unit.indexOf('month') !== -1 || unit.indexOf('ay') !== -1) pick(freq + '_month', freq + ' ayda bir', 3);
             }
@@ -269,6 +272,30 @@ export async function GET() {
           if (frequencyLabel) sessionStorage.setItem('subscription_frequency_label', frequencyLabel);
         }
 
+        // Final normalization to avoid invalid frequency like "<planId>_week".
+        var freqMatch = String(frequency || '').match(/^(\\d+)_(week|month)$/i);
+        if (freqMatch) {
+          var safeCount = parseInt(freqMatch[1], 10) || 1;
+          var safeUnit = String(freqMatch[2]).toLowerCase();
+          if (safeCount < 1 || safeCount > 12) safeCount = 1;
+          frequency = safeCount + '_' + safeUnit;
+          if (!frequencyLabel || /^\\d{6,}/.test(String(frequencyLabel).trim())) {
+            frequencyLabel = safeCount + (safeUnit === 'week' ? ' haftada bir' : ' ayda bir');
+          }
+        } else if (purchaseType === 'subscription') {
+          var fallback = deriveFromText(frequencyLabel || '');
+          if (fallback) {
+            frequency = fallback.code;
+            frequencyLabel = fallback.label;
+          } else if (/hafta|week/i.test(String(frequencyLabel || ''))) {
+            frequency = '1_week';
+            frequencyLabel = '1 haftada bir';
+          } else if (/(^|\\s)ay|month/i.test(String(frequencyLabel || ''))) {
+            frequency = '1_month';
+            frequencyLabel = '1 ayda bir';
+          }
+        }
+
         var effectiveTotal = mappedItems.reduce(function(sum, item) {
           return sum + (parseFloat(item.line_price) || 0);
         }, 0);
@@ -317,4 +344,3 @@ export async function GET() {
     }
   });
 }
-

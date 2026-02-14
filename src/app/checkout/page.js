@@ -26,6 +26,39 @@ export default function CheckoutPage() {
         city: '', state: '', zipCode: '', address: '',
     });
 
+    function normalizeFrequencyInput(freq, label) {
+        let normalizedFreq = typeof freq === 'string' ? freq : '';
+        let normalizedLabel = typeof label === 'string' ? label : '';
+        const match = normalizedFreq.match(/^(\d+)_(week|month)$/i);
+
+        if (match) {
+            let count = parseInt(match[1], 10) || 1;
+            const unit = String(match[2]).toLowerCase();
+            if (count < 1 || count > 12) count = 1;
+            normalizedFreq = `${count}_${unit}`;
+            if (!normalizedLabel || /^\d{6,}/.test(normalizedLabel.trim())) {
+                normalizedLabel = `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
+            }
+            return { frequency: normalizedFreq, label: normalizedLabel };
+        }
+
+        const lowerLabel = normalizedLabel.toLowerCase();
+        if (/hafta|week/.test(lowerLabel)) {
+            return {
+                frequency: '1_week',
+                label: normalizedLabel && !/^\d{6,}/.test(normalizedLabel.trim()) ? normalizedLabel : '1 haftada bir',
+            };
+        }
+        if (/(^|\s)ay|month/.test(lowerLabel)) {
+            return {
+                frequency: '1_month',
+                label: normalizedLabel && !/^\d{6,}/.test(normalizedLabel.trim()) ? normalizedLabel : '1 ayda bir',
+            };
+        }
+
+        return { frequency: '', label: '' };
+    }
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const cartParam = params.get('cart');
@@ -37,8 +70,12 @@ export default function CheckoutPage() {
                 setCartData(decoded);
                 if (decoded.purchase_type) setPurchaseType(decoded.purchase_type);
                 if (decoded.subscription_frequency) {
-                    setSubscriptionFrequency(decoded.subscription_frequency);
-                    setSubscriptionFrequencyLabel(decoded.subscription_frequency_label || '');
+                    const normalized = normalizeFrequencyInput(
+                        decoded.subscription_frequency,
+                        decoded.subscription_frequency_label || ''
+                    );
+                    setSubscriptionFrequency(normalized.frequency || '');
+                    setSubscriptionFrequencyLabel(normalized.label || '');
                 }
                 if (decoded.plan_id) setPlanId(decoded.plan_id);
                 if (decoded.shop_logo) setShopLogo(decoded.shop_logo);
@@ -65,8 +102,11 @@ export default function CheckoutPage() {
 
             if (type) setPurchaseType(type);
             if (directPlanId) setPlanId(directPlanId);
-            if (subFreq) setSubscriptionFrequency(subFreq);
-            if (subFreqLabel) setSubscriptionFrequencyLabel(subFreqLabel);
+            if (subFreq || subFreqLabel) {
+                const normalized = normalizeFrequencyInput(subFreq || '', subFreqLabel || '');
+                if (normalized.frequency) setSubscriptionFrequency(normalized.frequency);
+                if (normalized.label) setSubscriptionFrequencyLabel(normalized.label);
+            }
 
             if (productId || productName) {
                 setCartData({
@@ -138,7 +178,8 @@ export default function CheckoutPage() {
 
     function getNextPaymentDate() {
         const now = new Date();
-        const freq = subscriptionFrequency || '1_month';
+        const normalized = normalizeFrequencyInput(subscriptionFrequency, subscriptionFrequencyLabel);
+        const freq = normalized.frequency || '1_month';
         const parts = freq.split('_');
         const count = parseInt(parts[0]) || 1;
         const unit = parts[1] || 'month';
@@ -151,8 +192,9 @@ export default function CheckoutPage() {
     }
 
     function getFrequencyText() {
-        if (subscriptionFrequencyLabel) return subscriptionFrequencyLabel;
-        const freq = subscriptionFrequency;
+        const normalized = normalizeFrequencyInput(subscriptionFrequency, subscriptionFrequencyLabel);
+        if (normalized.label) return normalized.label;
+        const freq = normalized.frequency;
         if (!freq) return 'Aylık';
         const map = {
             '1_week': 'Haftada bir', '2_week': '2 haftada bir', '3_week': '3 haftada bir',
