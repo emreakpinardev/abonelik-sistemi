@@ -153,12 +153,12 @@ export async function GET(request) {
       console.error('Script installation exception:', scriptErr);
     }
 
-    // Kurulum tamamlandi, Shopify Admin'e geri yonlendir
-    // Bu adim, uygulamanin "yuklu" olarak isaretlenmesi icin kritiktir.
-    const apiKey = process.env.SHOPIFY_CLIENT_ID;
-    const adminAppUrl = `https://${shop}/admin/apps/${apiKey}`;
+    // Kurulum tamamlandi, dogrudan uygulama URL'ine don.
+    // Admin app path'e tekrar zorlama bazi magazalarda redirect loop uretiyor.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://abonelik-sistemi.vercel.app';
+    const appEntryUrl = `${appUrl}/?shop=${encodeURIComponent(shop)}`;
 
-    const response = NextResponse.redirect(adminAppUrl);
+    const response = NextResponse.redirect(appEntryUrl);
     response.cookies.set('shopify_oauth_state', '', {
       httpOnly: true,
       secure: true,
