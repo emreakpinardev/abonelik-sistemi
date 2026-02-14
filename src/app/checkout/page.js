@@ -20,6 +20,7 @@ export default function CheckoutPage() {
     const [subscriptionFrequencyLabel, setSubscriptionFrequencyLabel] = useState('');
     const [discountCode, setDiscountCode] = useState('');
     const [shopLogo, setShopLogo] = useState('/api/shopify/logo');
+    const [planId, setPlanId] = useState('');
     const [formData, setFormData] = useState({
         firstName: '', lastName: '', email: '', phone: '',
         city: '', state: '', zipCode: '', address: '',
@@ -28,7 +29,9 @@ export default function CheckoutPage() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const cartParam = params.get('cart');
+
         if (cartParam) {
+            // Base64 encoded cart data (from Shopify redirects)
             try {
                 const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
                 setCartData(decoded);
@@ -37,8 +40,8 @@ export default function CheckoutPage() {
                     setSubscriptionFrequency(decoded.subscription_frequency);
                     setSubscriptionFrequencyLabel(decoded.subscription_frequency_label || '');
                 }
+                if (decoded.plan_id) setPlanId(decoded.plan_id);
                 if (decoded.shop_logo) setShopLogo(decoded.shop_logo);
-                // Musteri bilgilerini otomatik doldur
                 if (decoded.customer_city) {
                     setFormData(prev => ({
                         ...prev,
@@ -48,6 +51,38 @@ export default function CheckoutPage() {
                 }
             } catch (e) {
                 console.error('Sepet verisi okunamadi:', e);
+            }
+        } else {
+            // Direct URL params (from Shopify buttons script)
+            const type = params.get('type');
+            const productId = params.get('product_id');
+            const productName = params.get('product_name');
+            const productPrice = params.get('product_price');
+            const variantId = params.get('variant_id');
+            const subFreq = params.get('subscription_frequency');
+            const subFreqLabel = params.get('subscription_frequency_label');
+            const directPlanId = params.get('plan_id');
+
+            if (type) setPurchaseType(type);
+            if (directPlanId) setPlanId(directPlanId);
+            if (subFreq) setSubscriptionFrequency(subFreq);
+            if (subFreqLabel) setSubscriptionFrequencyLabel(subFreqLabel);
+
+            if (productId || productName) {
+                setCartData({
+                    items: [{
+                        id: productId || '',
+                        name: productName || 'Ürün',
+                        price: parseFloat(productPrice) || 0,
+                        quantity: 1,
+                        variant_id: variantId || '',
+                    }],
+                    total: productPrice || '0',
+                    purchase_type: type || 'single',
+                    subscription_frequency: subFreq || '',
+                    subscription_frequency_label: subFreqLabel || '',
+                    plan_id: directPlanId || '',
+                });
             }
         }
         setLoading(false);
@@ -123,6 +158,7 @@ export default function CheckoutPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: purchaseType,
+                    planId,
                     productId: items.map(i => i.id).join(','),
                     productName: items.map(i => i.name).join(', '),
                     productPrice: total,
