@@ -116,6 +116,26 @@ export default function CheckoutPage() {
     const total = (subtotal + shippingCost).toFixed(2);
     const isSubscription = purchaseType === 'subscription';
 
+    function isTechnicalVariantLabel(label) {
+        if (!label) return true;
+        const v = String(label).trim().toLowerCase();
+        return (
+            v === 'default title' ||
+            v.startsWith('sub-') ||
+            v.startsWith('subscription ') ||
+            v.includes('sub-weekly') ||
+            v.includes('sub-monthly')
+        );
+    }
+
+    function prettySellingPlanName(rawName) {
+        const raw = String(rawName || '').trim();
+        if (!raw) return '';
+        if (subscriptionFrequencyLabel) return `Abonelik • ${subscriptionFrequencyLabel}`;
+        if (subscriptionFrequency) return `Abonelik • ${getFrequencyText()}`;
+        return raw;
+    }
+
     function getNextPaymentDate() {
         const now = new Date();
         const freq = subscriptionFrequency || '1_month';
@@ -361,11 +381,10 @@ export default function CheckoutPage() {
                                                     </div>
                                                     <div className="co-item-info">
                                                         <div className="co-item-name">{item.name}</div>
-                                                        {item.variant && <div className="co-item-variant">{item.variant}</div>}
-                                                        {item.selling_plan && <div className="co-item-sub"><Icon name="autorenew" size={12} /> {item.selling_plan.name}</div>}
+                                                        {item.variant && !isTechnicalVariantLabel(item.variant) && <div className="co-item-variant">{item.variant}</div>}
+                                                        {item.selling_plan && <div className="co-item-sub"><Icon name="autorenew" size={12} /> {prettySellingPlanName(item.selling_plan.name)}</div>}
                                                         <div className="co-item-meta">
                                                             {item.vendor && <span>{item.vendor}</span>}
-                                                            {item.sku && <span>SKU: {item.sku}</span>}
                                                         </div>
                                                     </div>
                                                     <div className="co-item-price">₺{item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2)}</div>
