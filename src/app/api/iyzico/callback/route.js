@@ -16,15 +16,29 @@ export async function POST(request) {
         const token = formData.get('token');
         const url = new URL(request.url);
         const subscriptionId = url.searchParams.get('subscriptionId');
+        const paymentType = url.searchParams.get('type'); // 'single' veya null (abonelik)
 
-        if (!token || !subscriptionId) {
-            return redirectToResult('error', 'Eksik bilgi');
+        if (!token) {
+            return redirectToResult('error', 'Eksik token bilgisi');
         }
 
         // iyzico'dan ödeme sonucunu al
         const paymentResult = await retrieveCheckoutForm(token);
-
         console.log('iyzico callback result:', JSON.stringify(paymentResult, null, 2));
+
+        // TEK SEFERLIK ODEME
+        if (paymentType === 'single') {
+            if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
+                return redirectToResult('success', 'Ödemeniz başarıyla tamamlandı!');
+            } else {
+                return redirectToResult('error', paymentResult.errorMessage || 'Ödeme başarısız oldu');
+            }
+        }
+
+        // ABONELIK ODEMESI
+        if (!subscriptionId) {
+            return redirectToResult('error', 'Abonelik bilgisi eksik');
+        }
 
         // Abonelik kaydını bul
         const subscription = await prisma.subscription.findUnique({

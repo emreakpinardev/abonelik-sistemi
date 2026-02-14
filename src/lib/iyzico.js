@@ -60,6 +60,7 @@ export async function initializeCheckoutForm({
     shippingAddress,
     billingAddress,
     basketItems,
+    paymentGroup = 'SUBSCRIPTION', // 'SUBSCRIPTION' veya 'PRODUCT'
 }) {
     // iyzico fiyat formatı: ondalık kısmı olmalı (ör: "1500.0")
     const formatPrice = (p) => {
@@ -80,7 +81,7 @@ export async function initializeCheckoutForm({
         paidPrice: formatPrice(paidPrice),
         currency: currency,
         basketId: basketId,
-        paymentGroup: 'SUBSCRIPTION',
+        paymentGroup: paymentGroup,
         callbackUrl: callbackUrl,
         enabledInstallments: [1],
         buyer: buyer,

@@ -154,6 +154,7 @@ export async function POST(request) {
                     price: price.toString(),
                 },
             ],
+            paymentGroup: type === 'subscription' ? 'SUBSCRIPTION' : 'PRODUCT',
         });
 
         if (result.status === 'success') {
