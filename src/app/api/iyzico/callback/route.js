@@ -9,6 +9,18 @@ import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isSystemLevelIyzicoError(message) {
+  const m = normalizeText(message);
+  return m.includes('sistem hatasi') || m.includes('system error');
+}
+
 function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   const next = new Date(fromDate);
 
@@ -163,8 +175,18 @@ export async function POST(request) {
       return redirectToResult('error', 'Abonelik bulunamadi');
     }
 
-    const subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
-    console.log('iyzico subscription callback result:', JSON.stringify(subscriptionResult, null, 2));
+    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+    console.log('iyzico subscription callback result (with conversationId):', JSON.stringify(subscriptionResult, null, 2));
+
+    // Some merchants intermittently receive "Sistem hatası" on first retrieve call.
+    // Retry once without conversationId before marking payment as failed.
+    if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
+      const retryResult = await retrieveSubscriptionCheckoutForm(token);
+      console.log('iyzico subscription callback retry result (without conversationId):', JSON.stringify(retryResult, null, 2));
+      if (retryResult.status === 'success') {
+        subscriptionResult = retryResult;
+      }
+    }
 
     if (subscriptionResult.status !== 'success') {
       await prisma.subscription.update({

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -15,7 +15,7 @@ function ResultContent() {
     useEffect(() => {
         if (isSuccess) {
             const timer = setInterval(() => {
-                setCountdown(prev => {
+                setCountdown((prev) => {
                     if (prev <= 1) {
                         clearInterval(timer);
                         window.location.href = shopUrl;
@@ -70,11 +70,13 @@ function ResultContent() {
 
 export default function ResultPage() {
     return (
-        <Suspense fallback={
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f7f8' }}>
-                <div style={{ width: 36, height: 36, border: '3px solid #eee', borderTopColor: '#1a1a2e', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-            </div>
-        }>
+        <Suspense
+            fallback={
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f7f8' }}>
+                    <div style={{ width: 36, height: 36, border: '3px solid #eee', borderTopColor: '#1a1a2e', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                </div>
+            }
+        >
             <ResultContent />
         </Suspense>
     );
