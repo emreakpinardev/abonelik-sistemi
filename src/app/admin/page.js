@@ -348,6 +348,7 @@ export default function AdminPage() {
                                                         value={planForm.interval}
                                                         onChange={(e) => setPlanForm({ ...planForm, interval: e.target.value })}
                                                     >
+                                                        <option value="MINUTELY">Dakikalik</option>
                                                         <option value="WEEKLY">Haftalık</option>
                                                         <option value="MONTHLY">Aylık</option>
                                                         <option value="QUARTERLY">3 Aylık</option>
@@ -403,7 +404,8 @@ export default function AdminPage() {
                                                         /{plan.interval === 'MONTHLY' ? 'ay' :
                                                             plan.interval === 'QUARTERLY' ? '3 ay' :
                                                                 plan.interval === 'YEARLY' ? 'yıl' :
-                                                                    plan.interval === 'WEEKLY' ? 'hafta' : 'ay'}
+                                                                    plan.interval === 'WEEKLY' ? 'hafta' :
+                                                                        plan.interval === 'MINUTELY' ? 'dakika' : 'ay'}
                                                     </span>
                                                 </div>
                                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 8 }}>

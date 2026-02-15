@@ -64,19 +64,37 @@ export default function CheckoutPage() {
         let normalizedFreq = typeof freq === 'string' ? freq : '';
         let normalizedLabel = typeof label === 'string' ? label : '';
         const labelText = normalizedLabel.toLowerCase();
+        const getSafeCount = (unit, rawCount) => {
+            let count = parseInt(rawCount, 10) || 1;
+            const max = unit === 'minute' ? 1440 : 12;
+            if (count < 1 || count > max) count = 1;
+            return count;
+        };
+        const unitLabel = (unit) => {
+            if (unit === 'week') return 'haftada bir';
+            if (unit === 'minute') return 'dakikada bir';
+            return 'ayda bir';
+        };
 
         // 1) Label text has priority (e.g. "3 haftada bir")
-        const labelMatch = labelText.match(/(\d+)\s*(hafta|week|weeks|weekly|ay|month|months|monthly)/i);
+        const labelMatch = labelText.match(/(\d+)\s*(hafta|week|weeks|weekly|ay|month|months|monthly|dakika|min|minute|minutes|minutely)/i);
         if (labelMatch) {
-            let count = parseInt(labelMatch[1], 10) || 1;
-            if (count < 1 || count > 12) count = 1;
-            const isWeek = /(hafta|week|weeks|weekly)/i.test(labelMatch[2]);
+            const token = labelMatch[2];
+            const unit = /(hafta|week|weeks|weekly)/i.test(token)
+                ? 'week'
+                : /(dakika|min|minute|minutes|minutely)/i.test(token)
+                    ? 'minute'
+                    : 'month';
+            const count = getSafeCount(unit, labelMatch[1]);
             return {
-                frequency: `${count}_${isWeek ? 'week' : 'month'}`,
-                label: `${count} ${isWeek ? 'haftada bir' : 'ayda bir'}`,
+                frequency: `${count}_${unit}`,
+                label: `${count} ${unitLabel(unit)}`,
             };
         }
 
+        if (/dakikalik|dakikada bir|her\s*dakika|every\s*minute|minutely/i.test(labelText)) {
+            return { frequency: '1_minute', label: '1 dakikada bir' };
+        }
         if (/iki\s*hafta|2\s*hafta|2\s*haftada|every\s*2\s*week|bi.?weekly/i.test(labelText)) {
             return { frequency: '2_week', label: '2 haftada bir' };
         }
@@ -100,18 +118,20 @@ export default function CheckoutPage() {
         }
 
         // 2) Canonical code fallback (e.g. "3_week")
-        const match = normalizedFreq.match(/^(\d+)_(week|month)$/i);
+        const match = normalizedFreq.match(/^(\d+)_(week|month|minute)$/i);
         if (match) {
-            let count = parseInt(match[1], 10) || 1;
             const unit = String(match[2]).toLowerCase();
-            if (count < 1 || count > 12) count = 1;
+            const count = getSafeCount(unit, match[1]);
             normalizedFreq = `${count}_${unit}`;
-            normalizedLabel = `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
+            normalizedLabel = `${count} ${unitLabel(unit)}`;
             return { frequency: normalizedFreq, label: normalizedLabel };
         }
 
         if (/hafta|week/.test(labelText)) {
             return { frequency: '1_week', label: '1 haftada bir' };
+        }
+        if (/dakika|min|minute/.test(labelText)) {
+            return { frequency: '1_minute', label: '1 dakikada bir' };
         }
         if (/(^|\s)ay|month/.test(labelText)) {
             return { frequency: '1_month', label: '1 ayda bir' };
@@ -288,7 +308,8 @@ export default function CheckoutPage() {
             v.startsWith('sub-') ||
             v.startsWith('subscription ') ||
             v.includes('sub-weekly') ||
-            v.includes('sub-monthly')
+            v.includes('sub-monthly') ||
+            v.includes('sub-minutely')
         );
     }
 
@@ -309,6 +330,8 @@ export default function CheckoutPage() {
         const unit = parts[1] || 'month';
         if (unit === 'week') {
             now.setDate(now.getDate() + count * 7);
+        } else if (unit === 'minute') {
+            now.setMinutes(now.getMinutes() + count);
         } else {
             now.setMonth(now.getMonth() + count);
         }
@@ -320,11 +343,12 @@ export default function CheckoutPage() {
         if (normalized.label) return normalized.label;
         const freq = normalized.frequency;
         if (!freq) return 'Aylik';
-        const m = String(freq).match(/^(\d+)_(week|month)$/i);
+        const m = String(freq).match(/^(\d+)_(week|month|minute)$/i);
         if (m) {
             const count = parseInt(m[1], 10) || 1;
             const unit = m[2].toLowerCase();
-            return `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
+            const label = unit === 'week' ? 'haftada bir' : unit === 'minute' ? 'dakikada bir' : 'ayda bir';
+            return `${count} ${label}`;
         }
         return 'Aylik';
     }

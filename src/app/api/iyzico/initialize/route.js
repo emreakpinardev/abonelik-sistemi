@@ -18,6 +18,9 @@ function parseFrequency(freq) {
   if (unit === 'week') {
     interval = 'WEEKLY';
     intervalCount = count;
+  } else if (unit === 'minute') {
+    interval = 'MINUTELY';
+    intervalCount = count;
   } else {
     interval = 'MONTHLY';
     intervalCount = count;

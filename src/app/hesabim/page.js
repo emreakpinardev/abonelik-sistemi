@@ -373,6 +373,10 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                                 Teslimat Sıklığı
                             </label>
                             <select style={st.select} defaultValue={getFreqValue(sub.plan)} onChange={(e) => onUpdateFreq(sub.id, e.target.value)}>
+                                <option value="1_minute">Dakikada bir</option>
+                                <option value="5_minute">5 dakikada bir</option>
+                                <option value="10_minute">10 dakikada bir</option>
+                                <option value="30_minute">30 dakikada bir</option>
                                 <option value="1_week">Haftada bir</option>
                                 <option value="2_week">2 haftada bir</option>
                                 <option value="3_week">3 haftada bir</option>
@@ -471,12 +475,24 @@ function formatDate(d) {
 }
 function getFreqValue(plan) {
     if (!plan) return '1_month';
+    if (plan.interval === 'MINUTELY') return plan.intervalCount + '_minute';
     if (plan.interval === 'WEEKLY') return plan.intervalCount + '_week';
     if (plan.interval === 'QUARTERLY') return '3_month';
     return plan.intervalCount + '_month';
 }
 function getFreqLabel(plan) {
-    const map = { '1_week': 'Haftalık', '2_week': '2 Hafta', '3_week': '3 Hafta', '1_month': 'Aylık', '2_month': '2 Ay', '3_month': '3 Ay' };
+    const map = {
+        '1_minute': 'Dakikalik',
+        '5_minute': '5 Dakika',
+        '10_minute': '10 Dakika',
+        '30_minute': '30 Dakika',
+        '1_week': 'Haftalık',
+        '2_week': '2 Hafta',
+        '3_week': '3 Hafta',
+        '1_month': 'Aylık',
+        '2_month': '2 Ay',
+        '3_month': '3 Ay'
+    };
     return map[getFreqValue(plan)] || 'Aylık';
 }
 

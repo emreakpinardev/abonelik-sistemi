@@ -240,6 +240,9 @@ function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
     const next = new Date(fromDate);
 
     switch (interval) {
+        case 'MINUTELY':
+            next.setMinutes(next.getMinutes() + intervalCount);
+            break;
         case 'MONTHLY':
             next.setMonth(next.getMonth() + intervalCount);
             break;

@@ -146,7 +146,8 @@ export default function AdminDashboard() {
     if (!newTemplateForm.name) return alert("Şablon adı girin");
 
     // Auto desc if empty
-    const desc = newTemplateForm.description.trim() || `${newTemplateForm.intervalCount} ${newTemplateForm.interval === 'WEEKLY' ? 'Haftada' : 'Ayda'} 1 yenilenir`;
+    const intervalTextMap = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
+    const desc = newTemplateForm.description.trim() || `${newTemplateForm.intervalCount} ${intervalTextMap[newTemplateForm.interval] || 'Ayda'} 1 yenilenir`;
 
     try {
       const res = await fetch('/api/plans', {
@@ -276,7 +277,7 @@ export default function AdminDashboard() {
 
   // --- HELPERS ---
   function intervalLabel(interval, count) {
-    const map = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda' };
+    const map = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
     const unit = map[interval] || 'Ayda';
     return `${count} ${unit} 1`;
   }
@@ -344,6 +345,7 @@ export default function AdminDashboard() {
                 <div style={{ flex: 1 }}>
                   <label style={st.label}>Sıklık</label>
                   <select style={st.select} value={newTemplateForm.interval} onChange={e => setNewTemplateForm({ ...newTemplateForm, interval: e.target.value })}>
+                    <option value="MINUTELY">Dakikalik</option>
                     <option value="WEEKLY">Haftalık</option>
                     <option value="MONTHLY">Aylık</option>
                     <option value="QUARTERLY">3 Aylık</option>

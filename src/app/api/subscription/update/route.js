@@ -43,6 +43,8 @@ export async function POST(request) {
 
         if (unit === 'week') {
             interval = 'WEEKLY';
+        } else if (unit === 'minute') {
+            interval = 'MINUTELY';
         } else if (unit === 'month') {
             if (count === 3) interval = 'QUARTERLY';
             else if (count === 12) interval = 'YEARLY';
@@ -54,6 +56,8 @@ export async function POST(request) {
         const nextPayment = new Date(now);
         if (unit === 'week') {
             nextPayment.setDate(nextPayment.getDate() + count * 7);
+        } else if (unit === 'minute') {
+            nextPayment.setMinutes(nextPayment.getMinutes() + count);
         } else {
             nextPayment.setMonth(nextPayment.getMonth() + count);
         }
@@ -77,6 +81,10 @@ export async function POST(request) {
         });
 
         const freqLabels = {
+            '1_minute': 'Dakikada bir',
+            '5_minute': '5 dakikada bir',
+            '10_minute': '10 dakikada bir',
+            '30_minute': '30 dakikada bir',
             '1_week': 'Haftada bir',
             '2_week': '2 haftada bir',
             '3_week': '3 haftada bir',
