@@ -1,239 +1,249 @@
 import { NextResponse } from 'next/server';
-import { retrieveCheckoutForm, refundPayment } from '@/lib/iyzico';
-import { createOrder, findCustomerByEmail, createCustomer } from '@/lib/shopify';
+import {
+  retrieveCheckoutForm,
+  retrieveSubscriptionCheckoutForm,
+  refundPayment,
+} from '@/lib/iyzico';
+import { createOrder } from '@/lib/shopify';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
+  const next = new Date(fromDate);
+
+  switch (interval) {
+    case 'MINUTELY':
+      next.setMinutes(next.getMinutes() + intervalCount);
+      break;
+    case 'MONTHLY':
+      next.setMonth(next.getMonth() + intervalCount);
+      break;
+    case 'QUARTERLY':
+      next.setMonth(next.getMonth() + 3 * intervalCount);
+      break;
+    case 'YEARLY':
+      next.setFullYear(next.getFullYear() + intervalCount);
+      break;
+    case 'WEEKLY':
+      next.setDate(next.getDate() + 7 * intervalCount);
+      break;
+    default:
+      next.setMonth(next.getMonth() + 1);
+  }
+
+  return next;
+}
+
+async function createShopifyOrderForSubscription(subscription, paymentId, tags = []) {
+  if (!subscription?.plan?.shopifyVariantId) return null;
+
+  const shopifyOrder = await createOrder({
+    customerEmail: subscription.customerEmail,
+    customerName: subscription.customerName,
+    lineItems: [
+      {
+        variantId: subscription.plan.shopifyVariantId,
+        quantity: 1,
+        price: subscription.plan.price.toString(),
+      },
+    ],
+    shippingAddress: subscription.customerAddress
+      ? {
+          address: subscription.customerAddress,
+          city: subscription.customerCity,
+          country: 'TR',
+        }
+      : null,
+    billingAddress: subscription.customerAddress
+      ? {
+          address: subscription.customerAddress,
+          city: subscription.customerCity,
+          country: 'TR',
+        }
+      : null,
+    tags,
+    iyzicoPaymentId: paymentId || '',
+  });
+
+  return shopifyOrder;
+}
+
+function redirectToResult(status, message) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const redirectUrl = `${appUrl}/checkout/result?status=${status}&message=${encodeURIComponent(message)}`;
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: redirectUrl,
+    },
+  });
+}
+
 /**
  * POST /api/iyzico/callback
- * iyzico ödeme tamamlandığında bu endpoint çağrılır
- * Başarılıysa aboneliği aktif eder ve Shopify'da sipariş oluşturur
  */
 export async function POST(request) {
-    try {
-        const formData = await request.formData();
-        const token = formData.get('token');
-        const url = new URL(request.url);
-        const subscriptionId = url.searchParams.get('subscriptionId');
-        const paymentType = url.searchParams.get('type'); // 'single' veya null (abonelik)
+  try {
+    const formData = await request.formData();
+    const token = formData.get('token');
+    const url = new URL(request.url);
+    const subscriptionId = url.searchParams.get('subscriptionId');
+    const paymentType = url.searchParams.get('type');
 
-        if (!token) {
-            return redirectToResult('error', 'Eksik token bilgisi');
-        }
+    if (!token) {
+      return redirectToResult('error', 'Eksik token bilgisi');
+    }
 
-        // iyzico'dan ödeme sonucunu al
-        const paymentResult = await retrieveCheckoutForm(token);
-        console.log('iyzico callback result:', JSON.stringify(paymentResult, null, 2));
+    // One-time flow
+    if (paymentType === 'single') {
+      const paymentResult = await retrieveCheckoutForm(token);
+      console.log('iyzico single callback result:', JSON.stringify(paymentResult, null, 2));
 
-        // TEK SEFERLIK ODEME
-        if (paymentType === 'single') {
-            if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
-                return redirectToResult('success', 'Ödemeniz başarıyla tamamlandı!');
-            } else {
-                return redirectToResult('error', paymentResult.errorMessage || 'Ödeme başarısız oldu');
-            }
-        }
+      if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
+        return redirectToResult('success', 'Odemeniz basariyla tamamlandi!');
+      }
 
-        // KART GUNCELLEME
-        if (paymentType === 'card_update') {
-            if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
-                // Kart bilgilerini guncelle
-                if (subscriptionId) {
-                    await prisma.subscription.update({
-                        where: { id: subscriptionId },
-                        data: {
-                            iyzicoCardToken: paymentResult.cardToken || null,
-                            iyzicoCardUserKey: paymentResult.cardUserKey || null,
-                        },
-                    });
-                }
+      return redirectToResult('error', paymentResult.errorMessage || 'Odeme basarisiz oldu');
+    }
 
-                // 1 TL'yi otomatik iade et
-                try {
-                    const transactionId = paymentResult.paymentItems?.[0]?.paymentTransactionId;
-                    if (transactionId) {
-                        const refundResult = await refundPayment({
-                            paymentTransactionId: transactionId,
-                            price: '1.00',
-                            conversationId: `refund_card_update_${subscriptionId}`,
-                        });
-                        console.log('Card update refund result:', refundResult);
-                    }
-                } catch (refundErr) {
-                    console.error('Card update refund error:', refundErr);
-                }
+    // Legacy card update flow
+    if (paymentType === 'card_update') {
+      const paymentResult = await retrieveCheckoutForm(token);
+      console.log('iyzico card update callback result:', JSON.stringify(paymentResult, null, 2));
 
-                return redirectToResult('success', 'Kart bilgileriniz başarıyla güncellendi! 1 ₺ doğrulama ücreti iade edilecektir.');
-            } else {
-                return redirectToResult('error', paymentResult.errorMessage || 'Kart güncelleme başarısız oldu');
-            }
-        }
-
-        // ABONELIK ODEMESI
-        if (!subscriptionId) {
-            return redirectToResult('error', 'Abonelik bilgisi eksik');
-        }
-
-        // Abonelik kaydını bul
-        const subscription = await prisma.subscription.findUnique({
+      if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
+        if (subscriptionId) {
+          await prisma.subscription.update({
             where: { id: subscriptionId },
-            include: { plan: true },
+            data: {
+              iyzicoCardToken: paymentResult.cardToken || null,
+              iyzicoCardUserKey: paymentResult.cardUserKey || null,
+            },
+          });
+        }
+
+        try {
+          const transactionId = paymentResult.paymentItems?.[0]?.paymentTransactionId;
+          if (transactionId) {
+            await refundPayment({
+              paymentTransactionId: transactionId,
+              price: '1.00',
+              conversationId: `refund_card_update_${subscriptionId}`,
+            });
+          }
+        } catch (refundErr) {
+          console.error('Card update refund error:', refundErr);
+        }
+
+        return redirectToResult('success', 'Kart bilgileriniz guncellendi!');
+      }
+
+      return redirectToResult('error', paymentResult.errorMessage || 'Kart guncelleme basarisiz oldu');
+    }
+
+    // Subscription flow via iyzico Subscription API
+    if (!subscriptionId) {
+      return redirectToResult('error', 'Abonelik bilgisi eksik');
+    }
+
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      return redirectToResult('error', 'Abonelik bulunamadi');
+    }
+
+    const subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+    console.log('iyzico subscription callback result:', JSON.stringify(subscriptionResult, null, 2));
+
+    if (subscriptionResult.status !== 'success') {
+      await prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { status: 'PAYMENT_FAILED' },
+      });
+
+      await prisma.payment.create({
+        data: {
+          amount: subscription.plan.price,
+          currency: subscription.plan.currency || 'TRY',
+          status: 'FAILED',
+          errorMessage: subscriptionResult.errorMessage || 'Abonelik olusturma basarisiz',
+          subscriptionId,
+        },
+      });
+
+      return redirectToResult('error', subscriptionResult.errorMessage || 'Abonelik olusturulamadi');
+    }
+
+    const iyzicoSubRef =
+      subscriptionResult.data?.subscriptionReferenceCode ||
+      subscriptionResult.subscriptionReferenceCode ||
+      subscriptionResult.data?.referenceCode ||
+      null;
+    const iyzicoCustomerRef =
+      subscriptionResult.data?.customerReferenceCode ||
+      subscriptionResult.customerReferenceCode ||
+      null;
+
+    const now = new Date();
+    const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
+
+    await prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: 'ACTIVE',
+        iyzicoSubscriptionRef: iyzicoSubRef || subscription.iyzicoSubscriptionRef,
+        iyzicoCustomerRef,
+        startDate: subscription.startDate || now,
+        currentPeriodStart: now,
+        currentPeriodEnd: nextPaymentDate,
+        nextPaymentDate,
+      },
+    });
+
+    const paymentId =
+      subscriptionResult.data?.paymentReferenceCode ||
+      subscriptionResult.paymentId ||
+      subscriptionResult.data?.orderReferenceCode ||
+      null;
+
+    const createdPayment = await prisma.payment.create({
+      data: {
+        amount: subscription.plan.price,
+        currency: subscription.plan.currency || 'TRY',
+        status: 'SUCCESS',
+        iyzicoPaymentId: paymentId,
+        subscriptionId,
+      },
+    });
+
+    try {
+      const shopifyOrder = await createShopifyOrderForSubscription(subscription, paymentId, ['abonelik', 'ilk-odeme']);
+      if (shopifyOrder) {
+        await prisma.payment.update({
+          where: { id: createdPayment.id },
+          data: {
+            shopifyOrderId: shopifyOrder.id?.toString(),
+            shopifyOrderName: shopifyOrder.name,
+          },
         });
 
-        if (!subscription) {
-            return redirectToResult('error', 'Abonelik bulunamadı');
-        }
-
-        if (paymentResult.status === 'success' && paymentResult.paymentStatus === 'SUCCESS') {
-            // ✅ Ödeme başarılı!
-
-            // Kart tokenini ve kullanıcı anahtarını kaydet (recurring için)
-            const now = new Date();
-            const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
-
-            await prisma.subscription.update({
-                where: { id: subscriptionId },
-                data: {
-                    status: 'ACTIVE',
-                    iyzicoCardToken: paymentResult.cardToken || null,
-                    iyzicoCardUserKey: paymentResult.cardUserKey || null,
-                    startDate: now,
-                    currentPeriodStart: now,
-                    currentPeriodEnd: nextPaymentDate,
-                    nextPaymentDate: nextPaymentDate,
-                },
-            });
-
-            // Ödeme kaydı oluştur
-            const payment = await prisma.payment.create({
-                data: {
-                    amount: subscription.plan.price,
-                    currency: subscription.plan.currency || 'TRY',
-                    status: 'SUCCESS',
-                    iyzicoPaymentId: paymentResult.paymentId || null,
-                    iyzicoPaymentTransactionId: paymentResult.paymentItems?.[0]?.paymentTransactionId || null,
-                    subscriptionId: subscriptionId,
-                },
-            });
-
-            // Shopify'da sipariş oluştur
-            try {
-                if (subscription.plan.shopifyVariantId) {
-                    const shopifyOrder = await createOrder({
-                        customerEmail: subscription.customerEmail,
-                        customerName: subscription.customerName,
-                        lineItems: [
-                            {
-                                variantId: subscription.plan.shopifyVariantId,
-                                quantity: 1,
-                                price: subscription.plan.price.toString(),
-                            },
-                        ],
-                        shippingAddress: subscription.customerAddress ? {
-                            address: subscription.customerAddress,
-                            city: subscription.customerCity,
-                            country: 'TR',
-                        } : null,
-                        billingAddress: subscription.customerAddress ? {
-                            address: subscription.customerAddress,
-                            city: subscription.customerCity,
-                            country: 'TR',
-                        } : null,
-                        tags: ['abonelik', 'ilk-odeme'],
-                        iyzicoPaymentId: paymentResult.paymentId || '',
-                    });
-
-                    // Sipariş bilgisini kaydet
-                    await prisma.payment.update({
-                        where: { id: payment.id },
-                        data: {
-                            shopifyOrderId: shopifyOrder.id?.toString(),
-                            shopifyOrderName: shopifyOrder.name,
-                        },
-                    });
-
-                    await prisma.subscription.update({
-                        where: { id: subscriptionId },
-                        data: {
-                            lastShopifyOrderId: shopifyOrder.id?.toString(),
-                        },
-                    });
-                }
-            } catch (shopifyError) {
-                console.error('Shopify sipariş oluşturma hatası:', shopifyError);
-                // Shopify hatası varsa abonelik yine aktif, sonra manuel oluşturulabilir
-            }
-
-            return redirectToResult('success', 'Aboneliğiniz başarıyla oluşturuldu!');
-        } else {
-            // ❌ Ödeme başarısız
-            await prisma.subscription.update({
-                where: { id: subscriptionId },
-                data: {
-                    status: 'PAYMENT_FAILED',
-                },
-            });
-
-            await prisma.payment.create({
-                data: {
-                    amount: subscription.plan.price,
-                    currency: subscription.plan.currency || 'TRY',
-                    status: 'FAILED',
-                    iyzicoPaymentId: paymentResult.paymentId || null,
-                    errorMessage: paymentResult.errorMessage || 'Ödeme başarısız',
-                    subscriptionId: subscriptionId,
-                },
-            });
-
-            return redirectToResult('error', paymentResult.errorMessage || 'Ödeme başarısız oldu');
-        }
-    } catch (error) {
-        console.error('iyzico callback error:', error);
-        return redirectToResult('error', 'Bir hata oluştu: ' + error.message);
-    }
-}
-
-/**
- * Sonraki ödeme tarihini hesapla
- */
-function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
-    const next = new Date(fromDate);
-
-    switch (interval) {
-        case 'MINUTELY':
-            next.setMinutes(next.getMinutes() + intervalCount);
-            break;
-        case 'MONTHLY':
-            next.setMonth(next.getMonth() + intervalCount);
-            break;
-        case 'QUARTERLY':
-            next.setMonth(next.getMonth() + 3);
-            break;
-        case 'YEARLY':
-            next.setFullYear(next.getFullYear() + 1);
-            break;
-        case 'WEEKLY':
-            next.setDate(next.getDate() + 7 * intervalCount);
-            break;
-        default:
-            next.setMonth(next.getMonth() + 1);
+        await prisma.subscription.update({
+          where: { id: subscriptionId },
+          data: { lastShopifyOrderId: shopifyOrder.id?.toString() },
+        });
+      }
+    } catch (shopifyError) {
+      console.error('Shopify siparis olusturma hatasi:', shopifyError);
     }
 
-    return next;
-}
-
-/**
- * Sonuç sayfasına yönlendir
- */
-function redirectToResult(status, message) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const redirectUrl = `${appUrl}/checkout/result?status=${status}&message=${encodeURIComponent(message)}`;
-
-    return new Response(null, {
-        status: 302,
-        headers: {
-            Location: redirectUrl,
-        },
-    });
+    return redirectToResult('success', 'Aboneliginiz basariyla olusturuldu!');
+  } catch (error) {
+    console.error('iyzico callback error:', error);
+    return redirectToResult('error', 'Bir hata olustu: ' + error.message);
+  }
 }

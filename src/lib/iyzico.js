@@ -30,25 +30,33 @@ function generateAuthorizationHeader(uri, body, randomString) {
 
 async function iyzicoRequest(path, body) {
     const randomString = generateRandomString();
-    const authorization = generateAuthorizationHeader(path, body, randomString);
+    const payload = body || {};
+    const authorization = generateAuthorizationHeader(path, payload, randomString);
 
     const response = await fetch(BASE_URL + path, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authorization,
+            Accept: 'application/json',
+            Authorization: authorization,
             'x-iyzi-rnd': randomString,
             'x-iyzi-client-version': 'iyzipay-node-2.0.65',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
     });
 
     return await response.json();
 }
 
+function formatPriceForIyzico(price) {
+    const parsed = Number.parseFloat(price);
+    if (!Number.isFinite(parsed)) return '0.0';
+    const normalized = parsed.toString();
+    return normalized.includes('.') ? normalized : `${normalized}.0`;
+}
+
 /**
- * iyzico checkout form baslat (ilk abonelik odemesi)
+ * iyzico checkout form baslat (tek seferlik odeme)
  */
 export async function initializeCheckoutForm({
     price,
@@ -60,33 +68,26 @@ export async function initializeCheckoutForm({
     shippingAddress,
     billingAddress,
     basketItems,
-    paymentGroup = 'SUBSCRIPTION', // 'SUBSCRIPTION' veya 'PRODUCT'
+    paymentGroup = 'PRODUCT',
 }) {
-    // iyzico fiyat formatı: ondalık kısmı olmalı (ör: "1500.0")
-    const formatPrice = (p) => {
-        const num = parseFloat(p).toString();
-        return num.includes('.') ? num : num + '.0';
-    };
-
-    // basketItems fiyatlarını da formatla
-    const formattedItems = basketItems.map(item => ({
+    const formattedItems = (basketItems || []).map((item) => ({
         ...item,
-        price: formatPrice(item.price),
+        price: formatPriceForIyzico(item.price),
     }));
 
     const body = {
         locale: 'tr',
         conversationId: basketId,
-        price: formatPrice(price),
-        paidPrice: formatPrice(paidPrice),
-        currency: currency,
-        basketId: basketId,
-        paymentGroup: paymentGroup,
-        callbackUrl: callbackUrl,
+        price: formatPriceForIyzico(price),
+        paidPrice: formatPriceForIyzico(paidPrice),
+        currency,
+        basketId,
+        paymentGroup,
+        callbackUrl,
         enabledInstallments: [1],
-        buyer: buyer,
-        shippingAddress: shippingAddress,
-        billingAddress: billingAddress,
+        buyer,
+        shippingAddress,
+        billingAddress,
         basketItems: formattedItems,
     };
 
@@ -94,19 +95,109 @@ export async function initializeCheckoutForm({
 }
 
 /**
- * iyzico checkout form sonucunu al
+ * iyzico checkout form sonucunu al (tek seferlik)
  */
 export async function retrieveCheckoutForm(token) {
     const body = {
         locale: 'tr',
-        token: token,
+        token,
     };
 
     return await iyzicoRequest('/payment/iyzipos/checkoutform/auth/ecom/detail', body);
 }
 
 /**
- * Kayitli kartla tekrarlayan odeme cek (cron job ile)
+ * Subscription API: urun olustur
+ */
+export async function createSubscriptionProduct({ name, description, locale = 'tr', conversationId }) {
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_product_${Date.now()}`,
+        name: String(name || 'Abonelik Urunu').slice(0, 200),
+        description: String(description || '').slice(0, 1000),
+    };
+
+    return await iyzicoRequest('/v2/subscription/products', body);
+}
+
+/**
+ * Subscription API: fiyat plani olustur
+ */
+export async function createSubscriptionPricingPlan({
+    name,
+    price,
+    currency = 'TRY',
+    paymentInterval = 'MONTHLY',
+    paymentIntervalCount = 1,
+    productReferenceCode,
+    trialPeriodDays = 0,
+    locale = 'tr',
+    conversationId,
+}) {
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_plan_${Date.now()}`,
+        name: String(name || 'Abonelik Plani').slice(0, 200),
+        price: formatPriceForIyzico(price),
+        currencyCode: currency,
+        paymentInterval,
+        paymentIntervalCount: Number(paymentIntervalCount) || 1,
+        productReferenceCode,
+        planPaymentType: 'RECURRING',
+        trialPeriodDays: Number(trialPeriodDays) || 0,
+    };
+
+    return await iyzicoRequest('/v2/subscription/pricing-plans', body);
+}
+
+/**
+ * Subscription API: checkout baslat
+ */
+export async function initializeSubscriptionCheckoutForm({
+    conversationId,
+    pricingPlanReferenceCode,
+    subscriptionInitialStatus = 'ACTIVE',
+    customer,
+    callbackUrl,
+    locale = 'tr',
+}) {
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_checkout_${Date.now()}`,
+        pricingPlanReferenceCode,
+        subscriptionInitialStatus,
+        customer,
+        callbackUrl,
+    };
+
+    return await iyzicoRequest('/v2/subscription/checkoutform/initialize', body);
+}
+
+/**
+ * Subscription API: checkout sonucu al
+ */
+export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
+    const body = { locale: 'tr' };
+    if (conversationId) body.conversationId = conversationId;
+    return await iyzicoRequest(`/v2/subscription/checkoutform/${token}`, body);
+}
+
+/**
+ * Subscription API: aboneligi iptal et
+ */
+export async function cancelIyzicoSubscription({ subscriptionReferenceCode, reason, locale = 'tr', conversationId }) {
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_cancel_${Date.now()}`,
+    };
+
+    if (reason) body.cancellationReason = reason;
+
+    return await iyzicoRequest(`/v2/subscription/subscriptions/${subscriptionReferenceCode}/cancel`, body);
+}
+
+/**
+ * Kayitli kartla tekrarlayan odeme cek (legacy)
  */
 export async function createPaymentWithSavedCard({
     price,
@@ -122,21 +213,21 @@ export async function createPaymentWithSavedCard({
 }) {
     const body = {
         locale: 'tr',
-        conversationId: conversationId,
+        conversationId,
         price: price.toString(),
         paidPrice: paidPrice.toString(),
-        currency: currency,
+        currency,
         installment: '1',
         paymentChannel: 'WEB',
         paymentGroup: 'SUBSCRIPTION',
         paymentCard: {
-            cardUserKey: cardUserKey,
-            cardToken: cardToken,
+            cardUserKey,
+            cardToken,
         },
-        buyer: buyer,
-        shippingAddress: shippingAddress,
-        billingAddress: billingAddress,
-        basketItems: basketItems,
+        buyer,
+        shippingAddress,
+        billingAddress,
+        basketItems,
     };
 
     return await iyzicoRequest('/payment/auth', body);
@@ -148,7 +239,7 @@ export async function createPaymentWithSavedCard({
 export async function retrieveCards(cardUserKey) {
     const body = {
         locale: 'tr',
-        cardUserKey: cardUserKey,
+        cardUserKey,
     };
 
     return await iyzicoRequest('/cardstorage/cards', body);
@@ -160,10 +251,10 @@ export async function retrieveCards(cardUserKey) {
 export async function refundPayment({ paymentTransactionId, price, currency = 'TRY', conversationId }) {
     const body = {
         locale: 'tr',
-        conversationId: conversationId || 'refund_' + Date.now(),
-        paymentTransactionId: paymentTransactionId,
+        conversationId: conversationId || `refund_${Date.now()}`,
+        paymentTransactionId,
         price: price.toString(),
-        currency: currency,
+        currency,
     };
 
     return await iyzicoRequest('/payment/refund', body);

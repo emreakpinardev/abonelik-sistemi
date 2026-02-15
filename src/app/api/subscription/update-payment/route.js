@@ -34,6 +34,13 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Aktif abonelik bulunamadi' }, { status: 404 });
         }
 
+        if (subscription.iyzicoSubscriptionRef) {
+            return NextResponse.json(
+                { error: 'Bu abonelik iyzico Subscription API ile yonetiliyor. Kart guncelleme icin iyzico musterı panelini kullanin.' },
+                { status: 400 }
+            );
+        }
+
         const plan = subscription.plan;
         const basketId = uuidv4();
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';

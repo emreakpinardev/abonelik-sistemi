@@ -1,70 +1,188 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createOrder } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
+
+function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
+  const next = new Date(fromDate);
+
+  switch (interval) {
+    case 'MINUTELY':
+      next.setMinutes(next.getMinutes() + intervalCount);
+      break;
+    case 'MONTHLY':
+      next.setMonth(next.getMonth() + intervalCount);
+      break;
+    case 'QUARTERLY':
+      next.setMonth(next.getMonth() + 3 * intervalCount);
+      break;
+    case 'YEARLY':
+      next.setFullYear(next.getFullYear() + intervalCount);
+      break;
+    case 'WEEKLY':
+      next.setDate(next.getDate() + 7 * intervalCount);
+      break;
+    default:
+      next.setMonth(next.getMonth() + 1);
+  }
+
+  return next;
+}
+
+async function createShopifyOrderForRenewal(subscription, paymentId) {
+  if (!subscription?.plan?.shopifyVariantId) return null;
+
+  return await createOrder({
+    customerEmail: subscription.customerEmail,
+    customerName: subscription.customerName,
+    lineItems: [
+      {
+        variantId: subscription.plan.shopifyVariantId,
+        quantity: 1,
+        price: subscription.plan.price.toString(),
+      },
+    ],
+    shippingAddress: subscription.customerAddress
+      ? {
+          address: subscription.customerAddress,
+          city: subscription.customerCity,
+          country: 'TR',
+        }
+      : null,
+    billingAddress: subscription.customerAddress
+      ? {
+          address: subscription.customerAddress,
+          city: subscription.customerCity,
+          country: 'TR',
+        }
+      : null,
+    tags: ['abonelik', 'iyzico-webhook-renewal'],
+    iyzicoPaymentId: paymentId || '',
+  });
+}
+
 /**
  * POST /api/iyzico/webhook
- * iyzico webhook'larını dinler
- * Ödeme durumu değişikliklerini yakalar
  */
 export async function POST(request) {
-    try {
-        const body = await request.json();
+  try {
+    const body = await request.json();
+    console.log('iyzico webhook received:', JSON.stringify(body, null, 2));
 
-        console.log('iyzico webhook received:', JSON.stringify(body, null, 2));
+    const iyziEventType = body.iyziEventType || body.eventType;
+    const payload = body.data || body;
 
-        const {
-            iyziEventType,
-            iyziReferenceCode,
-            token,
-            paymentId,
-            status,
-        } = body;
+    const subscriptionReferenceCode =
+      payload.subscriptionReferenceCode ||
+      body.iyziReferenceCode ||
+      payload.referenceCode ||
+      null;
 
-        // Webhook türüne göre işlem yap
-        switch (iyziEventType) {
-            case 'SUBSCRIPTION_ORDER_SUCCESS':
-                // Abonelik ödemesi başarılı
-                if (iyziReferenceCode) {
-                    await prisma.subscription.updateMany({
-                        where: { iyzicoSubscriptionRef: iyziReferenceCode },
-                        data: { status: 'ACTIVE' },
-                    });
-                }
-                break;
-
-            case 'SUBSCRIPTION_ORDER_FAILURE':
-                // Abonelik ödemesi başarısız
-                if (iyziReferenceCode) {
-                    await prisma.subscription.updateMany({
-                        where: { iyzicoSubscriptionRef: iyziReferenceCode },
-                        data: { status: 'PAYMENT_FAILED' },
-                    });
-                }
-                break;
-
-            case 'SUBSCRIPTION_CANCEL':
-                // Abonelik iptal edildi
-                if (iyziReferenceCode) {
-                    await prisma.subscription.updateMany({
-                        where: { iyzicoSubscriptionRef: iyziReferenceCode },
-                        data: {
-                            status: 'CANCELLED',
-                            cancelledAt: new Date(),
-                        },
-                    });
-                }
-                break;
-
-            default:
-                console.log('Bilinmeyen webhook türü:', iyziEventType);
-        }
-
-        // iyzico'ya 200 döndür (başarılı alındı)
-        return NextResponse.json({ received: true });
-    } catch (error) {
-        console.error('Webhook error:', error);
-        // Yine de 200 döndür ki iyzico tekrar denemesin
-        return NextResponse.json({ received: true, error: error.message });
+    if (!subscriptionReferenceCode) {
+      return NextResponse.json({ received: true, skipped: true, reason: 'subscription reference missing' });
     }
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { iyzicoSubscriptionRef: subscriptionReferenceCode },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      return NextResponse.json({ received: true, skipped: true, reason: 'subscription not found' });
+    }
+
+    if (iyziEventType === 'SUBSCRIPTION_ORDER_SUCCESS') {
+      const now = new Date();
+      const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
+
+      const paymentId = payload.paymentReferenceCode || payload.paymentId || body.paymentId || null;
+      const paymentTransactionId = payload.paymentTransactionId || body.paymentTransactionId || null;
+
+      let payment = null;
+      if (paymentId) {
+        payment = await prisma.payment.findFirst({
+          where: {
+            subscriptionId: subscription.id,
+            iyzicoPaymentId: String(paymentId),
+            status: 'SUCCESS',
+          },
+        });
+      }
+
+      if (!payment) {
+        payment = await prisma.payment.create({
+          data: {
+            amount: Number(payload.paidPrice || payload.price || subscription.plan.price),
+            currency: payload.currencyCode || subscription.plan.currency || 'TRY',
+            status: 'SUCCESS',
+            iyzicoPaymentId: paymentId ? String(paymentId) : null,
+            iyzicoPaymentTransactionId: paymentTransactionId ? String(paymentTransactionId) : null,
+            subscriptionId: subscription.id,
+          },
+        });
+      }
+
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ACTIVE',
+          currentPeriodStart: now,
+          currentPeriodEnd: nextPaymentDate,
+          nextPaymentDate,
+        },
+      });
+
+      try {
+        const order = await createShopifyOrderForRenewal(subscription, paymentId);
+        if (order) {
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              shopifyOrderId: order.id?.toString(),
+              shopifyOrderName: order.name,
+            },
+          });
+
+          await prisma.subscription.update({
+            where: { id: subscription.id },
+            data: { lastShopifyOrderId: order.id?.toString() },
+          });
+        }
+      } catch (shopifyError) {
+        console.error('Shopify renewal order error:', shopifyError);
+      }
+    } else if (iyziEventType === 'SUBSCRIPTION_ORDER_FAILURE') {
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: 'PAYMENT_FAILED' },
+      });
+
+      await prisma.payment.create({
+        data: {
+          amount: Number(payload.paidPrice || payload.price || subscription.plan.price),
+          currency: payload.currencyCode || subscription.plan.currency || 'TRY',
+          status: 'FAILED',
+          iyzicoPaymentId: payload.paymentReferenceCode || payload.paymentId || body.paymentId || null,
+          errorMessage: payload.errorMessage || body.errorMessage || 'SUBSCRIPTION_ORDER_FAILURE',
+          subscriptionId: subscription.id,
+        },
+      });
+    } else if (iyziEventType === 'SUBSCRIPTION_CANCEL') {
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+        },
+      });
+    } else {
+      console.log('Unhandled webhook type:', iyziEventType);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json({ received: true, error: error.message });
+  }
 }

@@ -33,6 +33,15 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Sadece aktif abonelikler guncellenebilir' }, { status: 400 });
         }
 
+        if (subscription.iyzicoSubscriptionRef) {
+            return NextResponse.json(
+                {
+                    error: 'Bu abonelik iyzico Subscription API ile yonetiliyor. Siklik degisikligi icin yeni planla yeni abonelik baslatin.',
+                },
+                { status: 400 }
+            );
+        }
+
         // Siklik ayristir: "2_week" -> count=2, unit=week
         const parts = frequency.split('_');
         const count = parseInt(parts[0]) || 1;

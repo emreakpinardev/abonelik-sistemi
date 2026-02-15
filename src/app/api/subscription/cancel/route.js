@@ -1,42 +1,62 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { cancelIyzicoSubscription } from '@/lib/iyzico';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/subscription/cancel
- * Aboneliği iptal eder
+ * Aboneligi iptal eder (iyzico + local)
  */
 export async function POST(request) {
-    try {
-        const { subscriptionId } = await request.json();
+  try {
+    const { subscriptionId } = await request.json();
 
-        if (!subscriptionId) {
-            return NextResponse.json({ error: 'Abonelik ID gerekli' }, { status: 400 });
-        }
-
-        const subscription = await prisma.subscription.findUnique({
-            where: { id: subscriptionId },
-        });
-
-        if (!subscription) {
-            return NextResponse.json({ error: 'Abonelik bulunamadı' }, { status: 404 });
-        }
-
-        await prisma.subscription.update({
-            where: { id: subscriptionId },
-            data: {
-                status: 'CANCELLED',
-                cancelledAt: new Date(),
-            },
-        });
-
-        return NextResponse.json({
-            success: true,
-            message: 'Abonelik iptal edildi',
-        });
-    } catch (error) {
-        console.error('Cancel error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!subscriptionId) {
+      return NextResponse.json({ error: 'Abonelik ID gerekli' }, { status: 400 });
     }
+
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) {
+      return NextResponse.json({ error: 'Abonelik bulunamadi' }, { status: 404 });
+    }
+
+    if (subscription.iyzicoSubscriptionRef) {
+      const cancelResult = await cancelIyzicoSubscription({
+        subscriptionReferenceCode: subscription.iyzicoSubscriptionRef,
+        reason: 'USER_CANCELLED',
+        conversationId: `cancel_${subscriptionId}`,
+      });
+
+      if (cancelResult.status !== 'success') {
+        return NextResponse.json(
+          {
+            error: 'iyzico abonelik iptal edilemedi',
+            details: cancelResult.errorMessage,
+            errorCode: cancelResult.errorCode,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    await prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Abonelik iptal edildi',
+    });
+  } catch (error) {
+    console.error('Cancel error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
