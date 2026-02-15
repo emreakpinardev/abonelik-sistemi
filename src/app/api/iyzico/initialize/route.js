@@ -174,10 +174,14 @@ async function ensureIyzicoPlanReferences(plan) {
       .toLocaleLowerCase('tr-TR')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
+    const rawPricingError = String(pricingResult.errorMessage || '').toLocaleLowerCase('tr-TR');
 
     if (
       pricingResult.status !== 'success' &&
       (normalizedPricingError.includes('odeme plani zaten var') ||
+        normalizedPricingError.includes('zaten var') ||
+        (normalizedPricingError.includes('plan') && normalizedPricingError.includes('var')) ||
+        rawPricingError.includes('zaten var') ||
         (normalizedPricingError.includes('already') && normalizedPricingError.includes('plan')))
     ) {
       pricingResult = await createSubscriptionPricingPlan({
