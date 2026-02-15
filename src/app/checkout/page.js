@@ -39,11 +39,11 @@ export default function CheckoutPage() {
         const labelText = normalizedLabel.toLowerCase();
 
         // 1) Label text has priority (e.g. "3 haftada bir")
-        const labelMatch = labelText.match(/(\d+)\s*(hafta|week|weeks|ay|month|months)/i);
+        const labelMatch = labelText.match(/(\d+)\s*(hafta|week|weeks|weekly|ay|month|months|monthly)/i);
         if (labelMatch) {
             let count = parseInt(labelMatch[1], 10) || 1;
             if (count < 1 || count > 12) count = 1;
-            const isWeek = /(hafta|week|weeks)/i.test(labelMatch[2]);
+            const isWeek = /(hafta|week|weeks|weekly)/i.test(labelMatch[2]);
             return {
                 frequency: `${count}_${isWeek ? 'week' : 'month'}`,
                 label: `${count} ${isWeek ? 'haftada bir' : 'ayda bir'}`,
@@ -64,6 +64,12 @@ export default function CheckoutPage() {
         }
         if (/uc\s*ay|u?\u00fc?\u00e7\s*ay|3\s*ay|3\s*ayda|every\s*3\s*month|quarterly/i.test(labelText)) {
             return { frequency: '3_month', label: '3 ayda bir' };
+        }
+        if (/weekly/.test(labelText)) {
+            return { frequency: '1_week', label: '1 haftada bir' };
+        }
+        if (/monthly/.test(labelText)) {
+            return { frequency: '1_month', label: '1 ayda bir' };
         }
 
         // 2) Canonical code fallback (e.g. "3_week")

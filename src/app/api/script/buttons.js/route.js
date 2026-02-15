@@ -127,19 +127,30 @@ export async function GET() {
     if (!text) return null;
     var t = String(text).toLowerCase();
 
-    var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|ay|month|months)/i);
+    var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|weekly|ay|month|months|monthly)/i);
     if (m1) {
       var n = parseInt(m1[1], 10) || 1;
       // Guard against plan/variant IDs accidentally parsed as frequency.
       if (n < 1 || n > 12) n = 1;
-      if (/(hafta|week)/i.test(m1[2])) return { code: n + '_week', label: n + ' haftada bir' };
+      if (/(hafta|week|weekly)/i.test(m1[2])) return { code: n + '_week', label: n + ' haftada bir' };
       return { code: n + '_month', label: n + ' ayda bir' };
+    }
+
+    // "weekly 3" / "monthly 2" style labels
+    var m2 = t.match(/(weekly|monthly)\\s*(\\d+)/i);
+    if (m2) {
+      var n2 = parseInt(m2[2], 10) || 1;
+      if (n2 < 1 || n2 > 12) n2 = 1;
+      if (/weekly/i.test(m2[1])) return { code: n2 + '_week', label: n2 + ' haftada bir' };
+      return { code: n2 + '_month', label: n2 + ' ayda bir' };
     }
 
     if (t.indexOf('haftada bir') !== -1 || t.indexOf('every week') !== -1) return { code: '1_week', label: '1 haftada bir' };
     if (t.indexOf('2 haftada bir') !== -1) return { code: '2_week', label: '2 haftada bir' };
     if (t.indexOf('3 haftada bir') !== -1) return { code: '3_week', label: '3 haftada bir' };
     if (t.indexOf('ayda bir') !== -1 || t.indexOf('every month') !== -1) return { code: '1_month', label: '1 ayda bir' };
+    if (t.indexOf('weekly') !== -1) return { code: '1_week', label: '1 haftada bir' };
+    if (t.indexOf('monthly') !== -1) return { code: '1_month', label: '1 ayda bir' };
     return null;
   }
 
@@ -330,44 +341,14 @@ export async function GET() {
       });
   }
 
-  function injectCustomSettingsButton() {
-    if (!window.location.pathname || window.location.pathname.indexOf('/cart') === -1) return;
-
-    var checkoutBtn = document.querySelector('button[name="checkout"], input[name="checkout"], a[href*="/checkout"]');
-    if (!checkoutBtn) return;
-
-    var host = checkoutBtn.parentElement;
-    if (!host) return;
-    if (host.querySelector('[data-open-custom-checkout-settings]')) return;
-
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'button button--secondary';
-    btn.setAttribute('data-open-custom-checkout-settings', '1');
-    btn.style.width = '100%';
-    btn.style.marginBottom = '10px';
-    btn.textContent = 'Teslimat & Abonelik Ayarlari';
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      redirectToOurCheckout();
-    });
-
-    host.insertBefore(btn, checkoutBtn);
-  }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       trackPurchaseType();
       interceptCheckout();
-      injectCustomSettingsButton();
-      setTimeout(injectCustomSettingsButton, 600);
     });
   } else {
     trackPurchaseType();
     interceptCheckout();
-    injectCustomSettingsButton();
-    setTimeout(injectCustomSettingsButton, 600);
   }
 })();
 `;
