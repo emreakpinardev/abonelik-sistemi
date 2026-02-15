@@ -31,7 +31,14 @@ export async function POST(request) {
         conversationId: `cancel_${subscriptionId}`,
       });
 
-      if (cancelResult.status !== 'success') {
+      const normalizedCancelError = String(cancelResult?.errorMessage || '')
+        .toLocaleLowerCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      const alreadyCancelled =
+        normalizedCancelError.includes('already') && normalizedCancelError.includes('cancel');
+
+      if (cancelResult.status !== 'success' && !alreadyCancelled) {
         return NextResponse.json(
           {
             error: 'iyzico abonelik iptal edilemedi',

@@ -73,7 +73,8 @@ function PortalContent() {
                 setMsg({ type: 'success', text: 'Abonelik iptal edildi.' });
                 fetchSubscriptions(email);
             } else {
-                setMsg({ type: 'error', text: 'Hata: ' + data.error });
+                const detail = data.details ? ` (${data.details})` : '';
+                setMsg({ type: 'error', text: 'Hata: ' + (data.error || 'Iptal basarisiz') + detail });
             }
         } catch (err) {
             setMsg({ type: 'error', text: 'Hata: ' + err.message });

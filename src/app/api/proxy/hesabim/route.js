@@ -49,7 +49,7 @@ export async function GET(request) {
     const html = generatePortalHTML(appUrl);
 
     return new NextResponse(html, {
-        headers: { 'Content-Type': 'application/liquid' },
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
 }
 
@@ -448,7 +448,8 @@ function generatePortalHTML(appUrl) {
                 hpShowMsg('Aboneliginiz iptal edildi', 'success');
                 hpFetchSubscriptions();
             } else {
-                hpShowMsg(data.error || 'Iptal basarisiz', 'error');
+                var detail = data.details ? (' - ' + data.details) : '';
+                hpShowMsg((data.error || 'Iptal basarisiz') + detail, 'error');
             }
         })
         .catch(function(err) { hpShowMsg('Hata: ' + err.message, 'error'); });
