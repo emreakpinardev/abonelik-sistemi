@@ -157,7 +157,7 @@ async function ensureIyzicoPlanReferences(plan) {
   if (!pricingPlanReferenceCode) {
     const mapped = toIyzicoPaymentInterval(plan.interval, plan.intervalCount);
 
-    const pricingResult = await createSubscriptionPricingPlan({
+    let pricingResult = await createSubscriptionPricingPlan({
       name: `${plan.name}`,
       price: plan.price,
       currency: plan.currency || 'TRY',
@@ -167,6 +167,30 @@ async function ensureIyzicoPlanReferences(plan) {
       trialPeriodDays: plan.trialDays || 0,
       conversationId: `create_pricing_${plan.id}`,
     });
+
+    // Some merchants return "Odeme plani zaten var." for duplicate plan names.
+    // Retry once with a unique plan name to avoid blocking checkout.
+    const normalizedPricingError = String(pricingResult.errorMessage || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    if (
+      pricingResult.status !== 'success' &&
+      (normalizedPricingError.includes('odeme plani zaten var') ||
+        (normalizedPricingError.includes('already') && normalizedPricingError.includes('plan')))
+    ) {
+      pricingResult = await createSubscriptionPricingPlan({
+        name: `${plan.name} - ${plan.id.slice(0, 8)}-${Date.now().toString().slice(-4)}`,
+        price: plan.price,
+        currency: plan.currency || 'TRY',
+        paymentInterval: mapped.paymentInterval,
+        paymentIntervalCount: mapped.paymentIntervalCount,
+        productReferenceCode,
+        trialPeriodDays: plan.trialDays || 0,
+        conversationId: `create_pricing_retry_${plan.id}`,
+      });
+    }
 
     if (pricingResult.status !== 'success') {
       throw new Error(pricingResult.errorMessage || 'iyzico pricing plan olusturulamadi');
