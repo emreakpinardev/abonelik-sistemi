@@ -212,10 +212,21 @@ export async function POST(request) {
 
     if (subscriptionResult.status !== 'success') {
       if (isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
-        // Do not write hard failure on transient/system-side ambiguity.
+        // Soft-success fallback:
+        // iyzico can approve payment but return transient system error on retrieve.
+        // Mark subscription active so it does not stay stuck in PENDING.
+        const now = new Date();
+        const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
+
         await prisma.subscription.update({
           where: { id: subscriptionId },
-          data: { status: 'PENDING' },
+          data: {
+            status: 'ACTIVE',
+            startDate: subscription.startDate || now,
+            currentPeriodStart: now,
+            currentPeriodEnd: nextPaymentDate,
+            nextPaymentDate,
+          },
         });
         return redirectToResult('success', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra hesabinizdan kontrol edin.');
       }
