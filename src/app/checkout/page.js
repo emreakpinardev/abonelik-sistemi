@@ -203,9 +203,14 @@ export default function CheckoutPage() {
                         .map((v) => String(v))
                 )
             );
+            const lineItems = (items || [])
+                .filter((i) => i?.variant_id)
+                .map((i) => `${i.variant_id}:${i.quantity || 1}`)
+                .join(',');
             const params = new URLSearchParams({
                 city: formData.city || '',
                 variant_ids: variantIds.join(','),
+                line_items: lineItems,
             });
             const res = await fetch(`/api/shopify/shipping-rates?${params.toString()}`);
             if (res.ok) {
