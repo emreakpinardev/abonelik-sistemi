@@ -243,8 +243,9 @@ export async function POST(request) {
           orderBy: { createdAt: 'desc' },
         });
 
+        let ensuredPayment = null;
         if (recentFailed) {
-          await prisma.payment.update({
+          ensuredPayment = await prisma.payment.update({
             where: { id: recentFailed.id },
             data: {
               status: 'SUCCESS',
@@ -252,7 +253,7 @@ export async function POST(request) {
             },
           });
         } else {
-          await prisma.payment.create({
+          ensuredPayment = await prisma.payment.create({
             data: {
               amount: subscription.plan.price,
               currency: subscription.plan.currency || 'TRY',
@@ -261,6 +262,30 @@ export async function POST(request) {
             },
           });
         }
+
+        try {
+          const shopifyOrder = await createShopifyOrderForSubscription(
+            subscription,
+            ensuredPayment?.iyzicoPaymentId || '',
+            ['abonelik', 'ilk-odeme', 'soft-success']
+          );
+          if (shopifyOrder && ensuredPayment?.id) {
+            await prisma.payment.update({
+              where: { id: ensuredPayment.id },
+              data: {
+                shopifyOrderId: shopifyOrder.id?.toString(),
+                shopifyOrderName: shopifyOrder.name,
+              },
+            });
+            await prisma.subscription.update({
+              where: { id: subscriptionId },
+              data: { lastShopifyOrderId: shopifyOrder.id?.toString() },
+            });
+          }
+        } catch (shopifyError) {
+          console.error('Shopify siparis olusturma hatasi (soft-success):', shopifyError);
+        }
+
         return redirectToResult('success', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra hesabinizdan kontrol edin.');
       }
 

@@ -1,7 +1,85 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createOrder } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
+
+async function backfillMissingShopifyOrder(subscription) {
+    if (!subscription || subscription.status !== 'ACTIVE') return subscription;
+    if (!subscription.plan?.shopifyVariantId) return subscription;
+
+    const successPayments = (subscription.payments || [])
+        .filter((p) => p.status === 'SUCCESS')
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    if (successPayments.length === 0) return subscription;
+    if (subscription.lastShopifyOrderId) return subscription;
+
+    const candidate = successPayments.find((p) => !p.shopifyOrderId) || null;
+    if (!candidate) return subscription;
+
+    try {
+        const shopifyOrder = await createOrder({
+            customerEmail: subscription.customerEmail,
+            customerName: subscription.customerName,
+            lineItems: [
+                {
+                    variantId: subscription.plan.shopifyVariantId,
+                    quantity: 1,
+                    price: subscription.plan.price.toString(),
+                },
+            ],
+            shippingAddress: subscription.customerAddress
+                ? {
+                    address: subscription.customerAddress,
+                    city: subscription.customerCity,
+                    country: 'TR',
+                }
+                : null,
+            billingAddress: subscription.customerAddress
+                ? {
+                    address: subscription.customerAddress,
+                    city: subscription.customerCity,
+                    country: 'TR',
+                }
+                : null,
+            tags: ['abonelik', 'backfill'],
+            iyzicoPaymentId: candidate.iyzicoPaymentId || '',
+        });
+
+        if (shopifyOrder) {
+            await prisma.payment.update({
+                where: { id: candidate.id },
+                data: {
+                    shopifyOrderId: shopifyOrder.id?.toString(),
+                    shopifyOrderName: shopifyOrder.name,
+                },
+            });
+
+            await prisma.subscription.update({
+                where: { id: subscription.id },
+                data: {
+                    lastShopifyOrderId: shopifyOrder.id?.toString(),
+                },
+            });
+
+            subscription.lastShopifyOrderId = shopifyOrder.id?.toString();
+            subscription.payments = subscription.payments.map((p) =>
+                p.id === candidate.id
+                    ? {
+                        ...p,
+                        shopifyOrderId: shopifyOrder.id?.toString(),
+                        shopifyOrderName: shopifyOrder.name,
+                    }
+                    : p
+            );
+        }
+    } catch (error) {
+        console.error('Backfill Shopify order error:', error);
+    }
+
+    return subscription;
+}
 
 function normalizePayments(payments = [], limit = 10) {
     const bucket = new Map();
@@ -63,10 +141,11 @@ export async function GET(request) {
                 return NextResponse.json({ error: 'Abonelik bulunamadı' }, { status: 404 });
             }
 
+            const hydrated = await backfillMissingShopifyOrder(subscription);
             return NextResponse.json({
                 subscription: {
-                    ...subscription,
-                    payments: normalizePayments(subscription.payments, 10),
+                    ...hydrated,
+                    payments: normalizePayments(hydrated.payments, 10),
                 },
             });
         }
@@ -84,8 +163,13 @@ export async function GET(request) {
                 orderBy: { createdAt: 'desc' },
             });
 
+            const hydratedSubs = [];
+            for (const s of subscriptions) {
+                hydratedSubs.push(await backfillMissingShopifyOrder(s));
+            }
+
             return NextResponse.json({
-                subscriptions: subscriptions.map((s) => ({
+                subscriptions: hydratedSubs.map((s) => ({
                     ...s,
                     payments: normalizePayments(s.payments, 10),
                 })),
