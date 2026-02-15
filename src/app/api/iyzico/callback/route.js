@@ -21,6 +21,10 @@ function isSystemLevelIyzicoError(message) {
   return m.includes('sistem hatasi') || m.includes('system error');
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   const next = new Date(fromDate);
 
@@ -176,19 +180,35 @@ export async function POST(request) {
     }
 
     let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
-    console.log('iyzico subscription callback result (with conversationId):', JSON.stringify(subscriptionResult, null, 2));
+    console.log('iyzico subscription callback result (attempt 1):', JSON.stringify(subscriptionResult, null, 2));
 
-    // Some merchants intermittently receive "Sistem hatası" on first retrieve call.
-    // Retry once without conversationId before marking payment as failed.
+    // iyzico can transiently return "Sistem hatasi" even when payment is approved.
+    // Retry several times before deciding failure to avoid false-negative statuses.
     if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
-      const retryResult = await retrieveSubscriptionCheckoutForm(token);
-      console.log('iyzico subscription callback retry result (without conversationId):', JSON.stringify(retryResult, null, 2));
-      if (retryResult.status === 'success') {
+      for (let i = 0; i < 4; i += 1) {
+        await sleep(1500);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token);
+        console.log(
+          `iyzico subscription callback retry result (attempt ${i + 2}):`,
+          JSON.stringify(retryResult, null, 2)
+        );
         subscriptionResult = retryResult;
+        if (subscriptionResult.status === 'success' || !isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
+          break;
+        }
       }
     }
 
     if (subscriptionResult.status !== 'success') {
+      if (isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
+        // Do not write hard failure on transient/system-side ambiguity.
+        await prisma.subscription.update({
+          where: { id: subscriptionId },
+          data: { status: 'PENDING' },
+        });
+        return redirectToResult('error', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra tekrar kontrol edin.');
+      }
+
       await prisma.subscription.update({
         where: { id: subscriptionId },
         data: { status: 'PAYMENT_FAILED' },
