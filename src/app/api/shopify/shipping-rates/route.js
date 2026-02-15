@@ -12,23 +12,10 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const city = searchParams.get('city') || 'Istanbul';
     const variantIdsParam = searchParams.get('variant_ids') || '';
-    const lineItemsParam = searchParams.get('line_items') || '';
     const variantIds = variantIdsParam
       .split(',')
       .map((v) => v.trim())
       .filter((v) => /^\d+$/.test(v));
-    const lineItems = lineItemsParam
-      .split(',')
-      .map((raw) => raw.trim())
-      .filter(Boolean)
-      .map((raw) => {
-        const [variantId, qty] = raw.split(':');
-        return {
-          variant_id: parseInt(String(variantId || '').trim(), 10),
-          quantity: Math.max(1, parseInt(String(qty || '1').trim(), 10) || 1),
-        };
-      })
-      .filter((li) => Number.isFinite(li.variant_id) && li.variant_id > 0);
 
     const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
@@ -38,21 +25,7 @@ export async function GET(request) {
       return NextResponse.json({ rates: getDefaultRates() });
     }
 
-    // 1) Exact Shopify checkout-based rates (product/profile aware)
-    if (lineItems.length > 0) {
-      const exactRates = await getRatesFromCheckoutApi({
-        shopDomain: SHOPIFY_DOMAIN,
-        accessToken: SHOPIFY_TOKEN,
-        apiVersion: API_VERSION,
-        city,
-        lineItems,
-      });
-      if (exactRates.length > 0) {
-        return NextResponse.json({ rates: exactRates, source: 'checkout-rates' });
-      }
-    }
-
-    // 2) Fallback: zone/profile based approximation
+    // Zone/profile based approximation
     const res = await fetch(
       `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/shipping_zones.json`,
       {
@@ -138,62 +111,6 @@ export async function GET(request) {
   } catch (err) {
     console.error('Shipping rates hatasi:', err);
     return NextResponse.json({ rates: getDefaultRates() });
-  }
-}
-
-async function getRatesFromCheckoutApi({ shopDomain, accessToken, apiVersion, city, lineItems }) {
-  try {
-    const base = `https://${shopDomain}/admin/api/${apiVersion}`;
-    const createRes = await fetch(`${base}/checkouts.json`, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        checkout: {
-          line_items: lineItems,
-          shipping_address: {
-            city: city || 'Istanbul',
-            province: city || 'Istanbul',
-            country: 'Turkey',
-            country_code: 'TR',
-            zip: '34000',
-            address1: 'Test Address',
-            first_name: 'Test',
-            last_name: 'User',
-            phone: '+905000000000',
-          },
-        },
-      }),
-    });
-
-    if (!createRes.ok) {
-      return [];
-    }
-    const createData = await createRes.json();
-    const token = createData?.checkout?.token;
-    if (!token) return [];
-
-    const ratesRes = await fetch(`${base}/checkouts/${token}/shipping_rates.json`, {
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!ratesRes.ok) return [];
-
-    const ratesData = await ratesRes.json();
-    const rawRates = ratesData?.shipping_rates || [];
-    return rawRates.map((rate, idx) => ({
-      id: String(rate.handle || rate.code || rate.name || `rate_${idx}`),
-      name: rate.name || 'Kargo',
-      price: String(rate.price || '0.00'),
-      delivery_days: rate.delivery_range || rate.presentment_name || '3-5 Is Gunu',
-    }));
-  } catch (err) {
-    console.error('[Shipping] Checkout API rate hatasi:', err);
-    return [];
   }
 }
 

@@ -195,6 +195,20 @@ export default function CheckoutPage() {
 
     async function fetchShippingRates() {
         try {
+            const parseRatePrice = (value) => {
+                const normalized = String(value ?? '').replace(',', '.');
+                const parsed = parseFloat(normalized);
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+            const matchesPackRule = (name = '', size) => {
+                const n = String(name).toLowerCase();
+                if (size === 5) return /(^|\D)5\s*['’]?\s*li(\D|$)|(^|\D)5li(\D|$)/.test(n);
+                if (size === 8) return /(^|\D)8\s*['’]?\s*li(\D|$)|(^|\D)8li(\D|$)/.test(n);
+                return false;
+            };
+            const has5Pack = (items || []).some((i) => matchesPackRule(i?.name, 5));
+            const has8Pack = (items || []).some((i) => matchesPackRule(i?.name, 8));
+
             const variantIds = Array.from(
                 new Set(
                     (items || [])
@@ -203,21 +217,27 @@ export default function CheckoutPage() {
                         .map((v) => String(v))
                 )
             );
-            const lineItems = (items || [])
-                .filter((i) => i?.variant_id)
-                .map((i) => `${i.variant_id}:${i.quantity || 1}`)
-                .join(',');
             const params = new URLSearchParams({
                 city: formData.city || '',
                 variant_ids: variantIds.join(','),
-                line_items: lineItems,
             });
             const res = await fetch(`/api/shopify/shipping-rates?${params.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.rates && data.rates.length > 0) {
-                    setShippingRates(data.rates);
-                    setShippingMethod(data.rates[0].id);
+                    let nextRates = data.rates;
+                    if (has8Pack) {
+                        nextRates = nextRates.filter((rate) => Math.abs(parseRatePrice(rate.price) - 175) > 0.01);
+                    } else if (has5Pack) {
+                        nextRates = nextRates.filter((rate) => Math.abs(parseRatePrice(rate.price) - 215) > 0.01);
+                    }
+                    if (nextRates.length === 0) nextRates = data.rates;
+
+                    setShippingRates(nextRates);
+                    setShippingMethod((prev) => {
+                        if (nextRates.some((r) => r.id === prev)) return prev;
+                        return nextRates[0]?.id || '';
+                    });
                 }
             }
         } catch (e) {
