@@ -36,7 +36,9 @@ export async function POST(request) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '');
       const alreadyCancelled =
-        normalizedCancelError.includes('already') && normalizedCancelError.includes('cancel');
+        (normalizedCancelError.includes('already') && normalizedCancelError.includes('cancel')) ||
+        normalizedCancelError.includes('abonelik bulunamadi') ||
+        (normalizedCancelError.includes('subscription') && normalizedCancelError.includes('not found'));
 
       if (cancelResult.status !== 'success' && !alreadyCancelled) {
         return NextResponse.json(
