@@ -72,9 +72,14 @@ async function ensureIyzicoPlanReferences(plan) {
 
     // Some merchants return "Urun zaten var." when same product name is reused.
     // Retry once with a unique product name and keep the created reference on this plan.
+    const normalizedProductError = String(productResult.errorMessage || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
     if (
       productResult.status !== 'success' &&
-      String(productResult.errorMessage || '').toLowerCase().includes('urun zaten var')
+      normalizedProductError.includes('urun zaten var')
     ) {
       productResult = await createSubscriptionProduct({
         name: `${plan.name} - ${plan.id.slice(0, 8)}-${Date.now().toString().slice(-4)}`,
