@@ -240,7 +240,13 @@ export async function GET() {
             if (d2) pick(d2.code, d2.label, 1);
           }
 
-          var effectiveUnitPrice = propPlanPrice !== null ? propPlanPrice : (item.price / 100);
+          // Price rule:
+          // - One-time items always use Shopify cart unit price.
+          // - Subscription items use plan price when provided; otherwise fallback to Shopify cart price.
+          var isSubscriptionItem = !!hasSP || !!hasProp;
+          var effectiveUnitPrice = isSubscriptionItem && propPlanPrice !== null
+            ? propPlanPrice
+            : (item.price / 100);
           var effectiveLinePrice = effectiveUnitPrice * item.quantity;
 
           return {
@@ -324,14 +330,44 @@ export async function GET() {
       });
   }
 
+  function injectCustomSettingsButton() {
+    if (!window.location.pathname || window.location.pathname.indexOf('/cart') === -1) return;
+
+    var checkoutBtn = document.querySelector('button[name="checkout"], input[name="checkout"], a[href*="/checkout"]');
+    if (!checkoutBtn) return;
+
+    var host = checkoutBtn.parentElement;
+    if (!host) return;
+    if (host.querySelector('[data-open-custom-checkout-settings]')) return;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'button button--secondary';
+    btn.setAttribute('data-open-custom-checkout-settings', '1');
+    btn.style.width = '100%';
+    btn.style.marginBottom = '10px';
+    btn.textContent = 'Teslimat & Abonelik Ayarlari';
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      redirectToOurCheckout();
+    });
+
+    host.insertBefore(btn, checkoutBtn);
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       trackPurchaseType();
       interceptCheckout();
+      injectCustomSettingsButton();
+      setTimeout(injectCustomSettingsButton, 600);
     });
   } else {
     trackPurchaseType();
     interceptCheckout();
+    injectCustomSettingsButton();
+    setTimeout(injectCustomSettingsButton, 600);
   }
 })();
 `;

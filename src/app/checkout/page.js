@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
 
@@ -36,31 +36,52 @@ export default function CheckoutPage() {
     function normalizeFrequencyInput(freq, label) {
         let normalizedFreq = typeof freq === 'string' ? freq : '';
         let normalizedLabel = typeof label === 'string' ? label : '';
-        const match = normalizedFreq.match(/^(\d+)_(week|month)$/i);
+        const labelText = normalizedLabel.toLowerCase();
 
+        // 1) Label text has priority (e.g. "3 haftada bir")
+        const labelMatch = labelText.match(/(\d+)\s*(hafta|week|weeks|ay|month|months)/i);
+        if (labelMatch) {
+            let count = parseInt(labelMatch[1], 10) || 1;
+            if (count < 1 || count > 12) count = 1;
+            const isWeek = /(hafta|week|weeks)/i.test(labelMatch[2]);
+            return {
+                frequency: `${count}_${isWeek ? 'week' : 'month'}`,
+                label: `${count} ${isWeek ? 'haftada bir' : 'ayda bir'}`,
+            };
+        }
+
+        if (/iki\s*hafta|2\s*hafta|2\s*haftada|every\s*2\s*week|bi.?weekly/i.test(labelText)) {
+            return { frequency: '2_week', label: '2 haftada bir' };
+        }
+        if (/uc\s*hafta|u?\u00fc?\u00e7\s*hafta|3\s*hafta|3\s*haftada|every\s*3\s*week/i.test(labelText)) {
+            return { frequency: '3_week', label: '3 haftada bir' };
+        }
+        if (/dort\s*hafta|do?\u00f6?\u00fcrt\s*hafta|4\s*hafta|4\s*haftada|every\s*4\s*week/i.test(labelText)) {
+            return { frequency: '4_week', label: '4 haftada bir' };
+        }
+        if (/iki\s*ay|2\s*ay|2\s*ayda|every\s*2\s*month/i.test(labelText)) {
+            return { frequency: '2_month', label: '2 ayda bir' };
+        }
+        if (/uc\s*ay|u?\u00fc?\u00e7\s*ay|3\s*ay|3\s*ayda|every\s*3\s*month|quarterly/i.test(labelText)) {
+            return { frequency: '3_month', label: '3 ayda bir' };
+        }
+
+        // 2) Canonical code fallback (e.g. "3_week")
+        const match = normalizedFreq.match(/^(\d+)_(week|month)$/i);
         if (match) {
             let count = parseInt(match[1], 10) || 1;
             const unit = String(match[2]).toLowerCase();
             if (count < 1 || count > 12) count = 1;
             normalizedFreq = `${count}_${unit}`;
-            if (!normalizedLabel || /^\d{6,}/.test(normalizedLabel.trim())) {
-                normalizedLabel = `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
-            }
+            normalizedLabel = `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
             return { frequency: normalizedFreq, label: normalizedLabel };
         }
 
-        const lowerLabel = normalizedLabel.toLowerCase();
-        if (/hafta|week/.test(lowerLabel)) {
-            return {
-                frequency: '1_week',
-                label: normalizedLabel && !/^\d{6,}/.test(normalizedLabel.trim()) ? normalizedLabel : '1 haftada bir',
-            };
+        if (/hafta|week/.test(labelText)) {
+            return { frequency: '1_week', label: '1 haftada bir' };
         }
-        if (/(^|\s)ay|month/.test(lowerLabel)) {
-            return {
-                frequency: '1_month',
-                label: normalizedLabel && !/^\d{6,}/.test(normalizedLabel.trim()) ? normalizedLabel : '1 ayda bir',
-            };
+        if (/(^|\s)ay|month/.test(labelText)) {
+            return { frequency: '1_month', label: '1 ayda bir' };
         }
 
         return { frequency: '', label: '' };
@@ -119,7 +140,7 @@ export default function CheckoutPage() {
                 setCartData({
                     items: [{
                         id: productId || '',
-                        name: productName || 'Ürün',
+                        name: productName || 'ÃœrÃ¼n',
                         price: parseFloat(productPrice) || 0,
                         quantity: 1,
                         variant_id: variantId || '',
@@ -202,12 +223,14 @@ export default function CheckoutPage() {
         const normalized = normalizeFrequencyInput(subscriptionFrequency, subscriptionFrequencyLabel);
         if (normalized.label) return normalized.label;
         const freq = normalized.frequency;
-        if (!freq) return 'Aylık';
-        const map = {
-            '1_week': 'Haftada bir', '2_week': '2 haftada bir', '3_week': '3 haftada bir',
-            '1_month': 'Ayda bir', '2_month': '2 ayda bir', '3_month': '3 ayda bir',
-        };
-        return map[freq] || 'Aylık';
+        if (!freq) return 'Aylik';
+        const m = String(freq).match(/^(\d+)_(week|month)$/i);
+        if (m) {
+            const count = parseInt(m[1], 10) || 1;
+            const unit = m[2].toLowerCase();
+            return `${count} ${unit === 'week' ? 'haftada bir' : 'ayda bir'}`;
+        }
+        return 'Aylik';
     }
 
     function handleInputChange(e) {
@@ -216,9 +239,9 @@ export default function CheckoutPage() {
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (items.length === 0) { alert('Sepetiniz boş'); return; }
+        if (items.length === 0) { alert('Sepetiniz boÅŸ'); return; }
         if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone || !formData.city || !formData.address) {
-            alert('Lütfen tüm zorunlu alanları doldurun'); return;
+            alert('LÃ¼tfen tÃ¼m zorunlu alanlarÄ± doldurun'); return;
         }
         setSubmitting(true);
         try {
@@ -248,19 +271,19 @@ export default function CheckoutPage() {
             const text = await res.text();
             let data;
             try { data = JSON.parse(text); } catch (e) {
-                alert(`Sunucu hatası (${res.status}): ${text.substring(0, 200)}`);
+                alert(`Sunucu hatasÄ± (${res.status}): ${text.substring(0, 200)}`);
                 setSubmitting(false);
                 return;
             }
             if (data.success && data.paymentPageUrl) {
-                // iyzico ödeme sayfasına yönlendir
+                // iyzico Ã¶deme sayfasÄ±na yÃ¶nlendir
                 window.location.href = data.paymentPageUrl;
             } else {
                 alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: ${data.details || ''}`);
                 setSubmitting(false);
             }
         } catch (err) {
-            alert(`Bağlantı hatası: ${err.message}`);
+            alert(`BaÄŸlantÄ± hatasÄ±: ${err.message}`);
             setSubmitting(false);
         }
     }
@@ -289,10 +312,10 @@ export default function CheckoutPage() {
     }, []);
 
     if (loading) {
-        return (<><style>{css}</style><div className="co-page"><div className="co-wrap"><div className="co-loading"><div className="co-spinner" /><p>Yükleniyor...</p></div></div></div></>);
+        return (<><style>{css}</style><div className="co-page"><div className="co-wrap"><div className="co-loading"><div className="co-spinner" /><p>YÃ¼kleniyor...</p></div></div></div></>);
     }
 
-    // iyzico formu açıkken — SAYFA İÇİNDE göster (popup değil)
+    // iyzico formu aÃ§Ä±kken â€” SAYFA Ä°Ã‡Ä°NDE gÃ¶ster (popup deÄŸil)
 
 
     return (
@@ -301,51 +324,51 @@ export default function CheckoutPage() {
                 <div className="co-wrap">
                     <div className="co-nav">
                         <img src={shopLogo} alt="Logo" className="co-logo" onError={(e) => { e.target.style.display = 'none'; }} />
-                        <span className="co-breadcrumb">Sepet › <strong>Adres</strong> › Ödeme</span>
+                        <span className="co-breadcrumb">Sepet â€º <strong>Adres</strong> â€º Ã–deme</span>
                     </div>
 
                     {/* SATIN ALMA TIPI */}
                     <div className={`co-purchase-badge ${isSubscription ? 'sub' : 'single'}`}>
                         <Icon name={isSubscription ? 'autorenew' : 'shopping_cart'} size={22} />
                         <span className="co-purchase-badge-text">
-                            {isSubscription ? 'Abonelik Siparişi — Düzenli teslimat' : 'Tek Seferlik Sipariş'}
+                            {isSubscription ? 'Abonelik SipariÅŸi â€” DÃ¼zenli teslimat' : 'Tek Seferlik SipariÅŸ'}
                         </span>
                     </div>
 
-                    {/* ABONELİK BİLGİ KUTUSU */}
+                    {/* ABONELÄ°K BÄ°LGÄ° KUTUSU */}
                     {isSubscription && (
                         <div className="co-sub-details">
-                            <div className="co-sub-details-title"><Icon name="event_note" size={18} /> Abonelik Detayları</div>
+                            <div className="co-sub-details-title"><Icon name="event_note" size={18} /> Abonelik DetaylarÄ±</div>
                             <div className="co-sub-details-grid">
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Bugünkü Ödeme</span>
-                                    <span className="co-sub-detail-value">₺{total}</span>
+                                    <span className="co-sub-detail-label">BugÃ¼nkÃ¼ Ã–deme</span>
+                                    <span className="co-sub-detail-value">â‚º{total}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
                                     <span className="co-sub-detail-label">Yenileme Periyodu</span>
                                     <span className="co-sub-detail-value">{getFrequencyText()}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Sonraki Ödeme</span>
+                                    <span className="co-sub-detail-label">Sonraki Ã–deme</span>
                                     <span className="co-sub-detail-value">{getNextPaymentDate()}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Yenileme Tutarı</span>
-                                    <span className="co-sub-detail-value">₺{total} / {getFrequencyText().toLowerCase()}</span>
+                                    <span className="co-sub-detail-label">Yenileme TutarÄ±</span>
+                                    <span className="co-sub-detail-value">â‚º{total} / {getFrequencyText().toLowerCase()}</span>
                                 </div>
                             </div>
-                            <div className="co-sub-details-note"><Icon name="verified_user" size={13} /> İstediğiniz zaman iptal edebilirsiniz. Kart bilgileriniz güvenle saklanır.</div>
+                            <div className="co-sub-details-note"><Icon name="verified_user" size={13} /> Ä°stediÄŸiniz zaman iptal edebilirsiniz. Kart bilgileriniz gÃ¼venle saklanÄ±r.</div>
                         </div>
                     )}
 
                     <div className="co-grid">
-                        {/* LEFT — FORM */}
+                        {/* LEFT â€” FORM */}
                         <div className="co-left">
                             <form onSubmit={handleSubmit}>
                                 <h2 className="co-section-title"><Icon name="location_on" size={22} /> Teslimat Adresi</h2>
                                 <div className="co-row">
-                                    <div className="co-field"><label>Ad <span className="req">*</span></label><input type="text" name="firstName" placeholder="Adınız" value={formData.firstName} onChange={handleInputChange} required /></div>
-                                    <div className="co-field"><label>Soyad <span className="req">*</span></label><input type="text" name="lastName" placeholder="Soyadınız" value={formData.lastName} onChange={handleInputChange} required /></div>
+                                    <div className="co-field"><label>Ad <span className="req">*</span></label><input type="text" name="firstName" placeholder="AdÄ±nÄ±z" value={formData.firstName} onChange={handleInputChange} required /></div>
+                                    <div className="co-field"><label>Soyad <span className="req">*</span></label><input type="text" name="lastName" placeholder="SoyadÄ±nÄ±z" value={formData.lastName} onChange={handleInputChange} required /></div>
                                 </div>
                                 <div className="co-row">
                                     <div className="co-field"><label>E-posta <span className="req">*</span></label><input type="email" name="email" placeholder="ornek@email.com" value={formData.email} onChange={handleInputChange} required /></div>
@@ -353,18 +376,18 @@ export default function CheckoutPage() {
                                 </div>
                                 <div className="co-row">
                                     <div className="co-field">
-                                        <label>Şehir <span className="req">*</span></label>
+                                        <label>Åžehir <span className="req">*</span></label>
                                         <select name="city" value={formData.city} onChange={handleInputChange} required className="co-select">
-                                            <option value="">Şehir seçin</option>
+                                            <option value="">Åžehir seÃ§in</option>
                                             {cities.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
-                                    <div className="co-field"><label>İlçe</label><input type="text" name="state" placeholder="İlçe" value={formData.state} onChange={handleInputChange} /></div>
+                                    <div className="co-field"><label>Ä°lÃ§e</label><input type="text" name="state" placeholder="Ä°lÃ§e" value={formData.state} onChange={handleInputChange} /></div>
                                     <div className="co-field co-field-sm"><label>Posta Kodu</label><input type="text" name="zipCode" placeholder="34000" value={formData.zipCode} onChange={handleInputChange} /></div>
                                 </div>
-                                <div className="co-field"><label>Adres <span className="req">*</span></label><textarea name="address" placeholder="Açık teslimat adresinizi girin..." rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required /></div>
+                                <div className="co-field"><label>Adres <span className="req">*</span></label><textarea name="address" placeholder="AÃ§Ä±k teslimat adresinizi girin..." rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required /></div>
 
-                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="local_shipping" size={22} /> Kargo Yöntemi</h2>
+                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="local_shipping" size={22} /> Kargo YÃ¶ntemi</h2>
                                 <div className="co-shipping-options">
                                     {shippingRates.length > 0 ? (
                                         // Shopify'dan gelen kargo yontemleri
@@ -375,7 +398,7 @@ export default function CheckoutPage() {
                                                 <div className="co-ship-info">
                                                     <strong>{rate.name}</strong>
                                                 </div>
-                                                <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ücretsiz' : `₺${parseFloat(rate.price).toFixed(2)}`}</div>
+                                                <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ãœcretsiz' : `â‚º${parseFloat(rate.price).toFixed(2)}`}</div>
                                             </label>
                                         ))
                                     ) : (
@@ -384,26 +407,26 @@ export default function CheckoutPage() {
                                             <label className={`co-shipping-opt ${shippingMethod === 'free' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="free" checked={shippingMethod === 'free'} onChange={() => setShippingMethod('free')} />
                                                 <div className="co-ship-icon"><Icon name="inventory_2" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Ücretsiz Kargo</strong></div>
-                                                <div className="co-ship-price">Ücretsiz</div>
+                                                <div className="co-ship-info"><strong>Ãœcretsiz Kargo</strong></div>
+                                                <div className="co-ship-price">Ãœcretsiz</div>
                                             </label>
                                             <label className={`co-shipping-opt ${shippingMethod === 'express' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')} />
                                                 <div className="co-ship-icon"><Icon name="local_shipping" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Hızlı Kargo</strong></div>
-                                                <div className="co-ship-price">₺49,90</div>
+                                                <div className="co-ship-info"><strong>HÄ±zlÄ± Kargo</strong></div>
+                                                <div className="co-ship-price">â‚º49,90</div>
                                             </label>
                                         </>
                                     )}
                                 </div>
 
-                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="payment" size={22} /> Ödeme Yöntemi</h2>
+                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="payment" size={22} /> Ã–deme YÃ¶ntemi</h2>
                                 <div className="co-payment-method">
                                     <div className="co-pay-option active">
                                         <input type="radio" name="payment" checked readOnly />
                                         <div className="co-pay-info">
-                                            <strong>iyzico ile Öde</strong>
-                                            <span>Kredi / Banka Kartı</span>
+                                            <strong>iyzico ile Ã–de</strong>
+                                            <span>Kredi / Banka KartÄ±</span>
                                         </div>
                                         <div className="co-pay-logos">
                                             <span className="co-iyzico-logo-text">iyzico</span>
@@ -412,18 +435,18 @@ export default function CheckoutPage() {
                                 </div>
 
                                 <button className={`co-pay-btn ${submitting ? 'disabled' : ''}`} type="submit" disabled={submitting}>
-                                    {submitting ? 'Ödeme Sayfasına Yönlendiriliyor...' : `Ödemeye Geç — ₺${total}`}
+                                    {submitting ? 'Ã–deme SayfasÄ±na YÃ¶nlendiriliyor...' : `Ã–demeye GeÃ§ â€” â‚º${total}`}
                                 </button>
                             </form>
                         </div>
 
-                        {/* RIGHT — CART SUMMARY */}
+                        {/* RIGHT â€” CART SUMMARY */}
                         <div className="co-right">
                             <div className="co-summary-card">
                                 <h2 className="co-summary-title"><Icon name="shopping_bag" size={20} /> Sepetiniz</h2>
 
                                 {items.length === 0 ? (
-                                    <div className="co-empty"><p>Sepetiniz boş</p></div>
+                                    <div className="co-empty"><p>Sepetiniz boÅŸ</p></div>
                                 ) : (
                                     <>
                                         <div className="co-items">
@@ -441,29 +464,29 @@ export default function CheckoutPage() {
                                                             {item.vendor && <span>{item.vendor}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="co-item-price">₺{item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2)}</div>
+                                                    <div className="co-item-price">â‚º{item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2)}</div>
                                                 </div>
                                             ))}
                                         </div>
 
                                         <div className="co-discount">
-                                            <input type="text" placeholder="İndirim kodu" value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} />
+                                            <input type="text" placeholder="Ä°ndirim kodu" value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} />
                                             <button type="button" className="co-discount-btn">Uygula</button>
                                         </div>
 
                                         <div className="co-totals">
-                                            <div className="co-total-row"><span>Ara Toplam</span><span>₺{subtotal.toFixed(2)}</span></div>
+                                            <div className="co-total-row"><span>Ara Toplam</span><span>â‚º{subtotal.toFixed(2)}</span></div>
                                             {parseFloat(cartData?.total_discount || 0) > 0 && (
-                                                <div className="co-total-row co-discount-row"><span>İndirim</span><span>-₺{cartData.total_discount}</span></div>
+                                                <div className="co-total-row co-discount-row"><span>Ä°ndirim</span><span>-â‚º{cartData.total_discount}</span></div>
                                             )}
-                                            <div className="co-total-row"><span>Kargo</span><span>{shippingCost === 0 ? 'Ücretsiz' : `₺${shippingCost.toFixed(2)}`}</span></div>
-                                            <div className="co-total-row"><span>Tahmini KDV (%20)</span><span>₺{(subtotal * 0.20).toFixed(2)}</span></div>
-                                            <div className="co-total-row co-total-final"><span>Toplam</span><span>₺{total}</span></div>
+                                            <div className="co-total-row"><span>Kargo</span><span>{shippingCost === 0 ? 'Ãœcretsiz' : `â‚º${shippingCost.toFixed(2)}`}</span></div>
+                                            <div className="co-total-row"><span>Tahmini KDV (%20)</span><span>â‚º{(subtotal * 0.20).toFixed(2)}</span></div>
+                                            <div className="co-total-row co-total-final"><span>Toplam</span><span>â‚º{total}</span></div>
                                         </div>
 
                                         <button className={`co-pay-btn co-pay-desktop ${submitting ? 'disabled' : ''}`} type="button" disabled={submitting}
                                             onClick={() => document.querySelector('form')?.requestSubmit()}>
-                                            {submitting ? 'İşleniyor...' : `Ödemeye Geç — ₺${total}`}
+                                            {submitting ? 'Ä°ÅŸleniyor...' : `Ã–demeye GeÃ§ â€” â‚º${total}`}
                                         </button>
                                     </>
                                 )}
@@ -471,8 +494,8 @@ export default function CheckoutPage() {
 
                             <div className="co-trust">
                                 <div className="co-trust-item"><Icon name="lock" size={14} /> 256-bit SSL</div>
-                                <div className="co-trust-item"><Icon name="verified_user" size={14} /> iyzico Güvence</div>
-                                <div className="co-trust-item"><Icon name="undo" size={14} /> Kolay İade</div>
+                                <div className="co-trust-item"><Icon name="verified_user" size={14} /> iyzico GÃ¼vence</div>
+                                <div className="co-trust-item"><Icon name="undo" size={14} /> Kolay Ä°ade</div>
                             </div>
                         </div>
                     </div>
@@ -621,3 +644,6 @@ const css = `
     .co-sub-details-grid { grid-template-columns: 1fr; }
 }
 `;
+
+
+
