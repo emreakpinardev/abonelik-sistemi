@@ -36,7 +36,7 @@ function PortalContent() {
                 setNoSub(true);
             }
         } catch (err) {
-            setMsg({ type: 'error', text: 'Ba?lant? hatas?: ' + err.message });
+            setMsg({ type: 'error', text: 'Ba\u011flant\u0131 hatas\u0131: ' + err.message });
         }
         setLoading(false);
     }
@@ -50,7 +50,7 @@ function PortalContent() {
             });
             const data = await res.json();
             if (data.success) {
-                setMsg({ type: 'success', text: 'Teslimat s?kl??? g?ncellendi!' });
+                setMsg({ type: 'success', text: 'Teslimat s\u0131kl\u0131\u011f\u0131 g\u00fcncellendi!' });
                 fetchSubscriptions(email);
             } else {
                 setMsg({ type: 'error', text: 'Hata: ' + data.error });
@@ -61,7 +61,7 @@ function PortalContent() {
     }
 
     async function handleCancel(subId) {
-        if (!confirm('Aboneli?inizi iptal etmek istedi?inize emin misiniz?')) return;
+        if (!confirm('Aboneli\u011finizi iptal etmek istedi\u011finize emin misiniz?')) return;
         try {
             const res = await fetch('/api/subscription/cancel', {
                 method: 'POST',
@@ -137,12 +137,12 @@ function PortalContent() {
                         <p style={st.emptyDesc}>
                             {emailFromUrl
                                 ? 'Bu hesaba ait aktif bir abonelik bulunamadı.'
-                                : 'Abonelik bilgilerinizi g?r?nt?lemek i?in l?tfen hesab?n?za giri? yap?n.'}
+                                : 'Abonelik bilgilerinizi g\u00f6r\u00fcnt\u00fclemek i\u00e7in l\u00fctfen hesab\u0131n\u0131za giri\u015f yap\u0131n.'}
                         </p>
                         {!emailFromUrl && (
                             <a href="/account/login" style={st.btnGreen}>
                                 <span className="material-icons-outlined" style={{ fontSize: 18, marginRight: 6, verticalAlign: 'middle' }}>login</span>
-                                Giri? Yap
+                                {'Giri\u015f Yap'}
                             </a>
                         )}
                     </div>
@@ -166,9 +166,9 @@ function PortalContent() {
                 {/* Tabs */}
                 <div style={st.tabs}>
                     <TabBtn active={activeTab === 'overview'} icon="local_shipping" label="Abonelikler" onClick={() => setActiveTab('overview')} />
-                    <TabBtn active={activeTab === 'payments'} icon="receipt_long" label="\u00d6deme Ge\u00e7mi\u015fi" onClick={() => setActiveTab('payments')} />
+                    <TabBtn active={activeTab === 'payments'} icon="receipt_long" label={'\u00d6deme Ge\u00e7mi\u015fi'} onClick={() => setActiveTab('payments')} />
                     <TabBtn active={activeTab === 'invoices'} icon="description" label="Faturalar" onClick={() => setActiveTab('invoices')} />
-                    <TabBtn active={activeTab === 'settings'} icon="credit_card" label="Kart Ayarlar?" onClick={() => setActiveTab('settings')} />
+                    <TabBtn active={activeTab === 'settings'} icon="credit_card" label={'Kart Ayarlar\u0131'} onClick={() => setActiveTab('settings')} />
                 </div>
 
                 {/* ===== TAB: Overview ===== */}
@@ -178,7 +178,7 @@ function PortalContent() {
                         {activeSubs.map(sub => (
                             <SubCard key={sub.id} sub={sub} onUpdateFreq={handleUpdateFreq} onCancel={handleCancel} onUpdatePayment={handleUpdatePayment} />
                         ))}
-                        {otherSubs.length > 0 && <SectionLabel text="Ge?mi? Abonelikler" style={{ marginTop: 28 }} />}
+                        {otherSubs.length > 0 && <SectionLabel text={'Ge\u00e7mi\u015f Abonelikler'} style={{ marginTop: 28 }} />}
                         {otherSubs.map(sub => <SubCard key={sub.id} sub={sub} />)}
                     </>
                 )}
@@ -206,9 +206,9 @@ function PortalContent() {
                                             <tr key={p.id} style={st.tr}>
                                                 <td style={st.td}>{formatDate(p.createdAt)}</td>
                                                 <td style={st.td}>{p.planName || '-'}</td>
-                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} ?</td>
+                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} {'\u20BA'}</td>
                                                 <td style={st.td}>
-                                                    <StatusBadge success={p.status === 'SUCCESS'} label={p.status === 'SUCCESS' ? 'Ba?ar?l?' : 'Ba?ar?s?z'} />
+                                                    <StatusBadge success={p.status === 'SUCCESS'} label={p.status === 'SUCCESS' ? 'Ba\u015far\u0131l\u0131' : 'Ba\u015far\u0131s\u0131z'} />
                                                 </td>
                                             </tr>
                                         ))}
@@ -246,7 +246,7 @@ function PortalContent() {
                                                 <td style={{ ...st.td, fontWeight: 500 }}>INV-{String(allPayments.filter(x => x.status === 'SUCCESS').length - i).padStart(4, '0')}</td>
                                                 <td style={st.td}>{formatDate(p.createdAt)}</td>
                                                 <td style={st.td}>{p.planName || '-'}</td>
-                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} ?</td>
+                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} {'\u20BA'}</td>
                                                 <td style={st.td}>
                                                     <button onClick={() => handleDownloadInvoice(p, allPayments.filter(x => x.status === 'SUCCESS').length - i)} style={st.btnSmall}>
                                                         <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>download</span>
@@ -272,7 +272,7 @@ function PortalContent() {
                             <h3 style={st.cardTitleText}>{'\u00d6deme Y\u00f6ntemi'}</h3>
                         </div>
                         <p style={st.settingsDesc}>
-                            Kayıtlı kart bilgilerinizi güncelleyebilirsiniz. Güncelleme sırasında 1 ? do?rulama ücreti alınır ve <strong>otomatik olarak iade edilir</strong>.
+                            {'Kay\u0131tl\u0131 kart bilgilerinizi g\u00fcncelleyebilirsiniz. G\u00fcncelleme s\u0131ras\u0131nda 1 \u20BA do\u011frulama \u00fccreti al\u0131n\u0131r ve '}<strong>otomatik olarak iade edilir</strong>.
                         </p>
                         {activeSubs.map(sub => (
                             <div key={sub.id} style={st.paymentRow}>
@@ -280,7 +280,7 @@ function PortalContent() {
                                     <span className="material-icons-outlined" style={{ fontSize: 28, color: '#6b7280' }}>credit_card</span>
                                     <div>
                                         <div style={st.paymentName}>{sub.plan?.name || 'Abonelik'}</div>
-                                        <div style={st.paymentPrice}>{sub.plan?.price} ? / {getFreqLabel(sub.plan)}</div>
+                                        <div style={st.paymentPrice}>{sub.plan?.price} {'\u20BA'} / {getFreqLabel(sub.plan)}</div>
                                     </div>
                                 </div>
                                 <button onClick={() => handleUpdatePayment(sub.id)} style={st.btnOutline}>
@@ -292,7 +292,7 @@ function PortalContent() {
                             </div>
                         ))}
                         {activeSubs.length === 0 && (
-                            <EmptyState icon="credit_card_off" text="Aktif aboneli?iniz bulunmuyor." />
+                            <EmptyState icon="credit_card_off" text={'Aktif aboneli\u011finiz bulunmuyor.'} />
                         )}
                     </div>
                 )}
@@ -329,9 +329,9 @@ td{padding:12px;border-bottom:1px solid #f3f4f6;font-size:14px}
 </div>
 <div class="section"><div class="section-title">\u00d6deme Detaylar\u0131</div></div>
 <table><thead><tr><th>Açıklama</th><th>Tutar</th></tr></thead>
-<tbody><tr><td>${payment.planName || 'Abonelik'}</td><td>${payment.amount} ?</td></tr>
-<tr class="total-row"><td>Toplam</td><td>${payment.amount} ?</td></tr></tbody></table>
-<div class="footer">Bu belge elektronik olarak olu?turulmu?tur. ⬢ Skycrops Abonelik Sistemi</div>
+<tbody><tr><td>${payment.planName || 'Abonelik'}</td><td>${payment.amount} \u20BA</td></tr>
+<tr class="total-row"><td>Toplam</td><td>${payment.amount} \u20BA</td></tr></tbody></table>
+<div class="footer">Bu belge elektronik olarak olu\u015fturulmu\u015ftur. \u2022 Skycrops Abonelik Sistemi</div>
 </body></html>`;
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
@@ -364,7 +364,7 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                     </span>
                     <div>
                         <h3 style={st.subName}>{sub.plan?.name || 'Abonelik'}</h3>
-                        <span style={st.subPrice}>{sub.plan?.price} ? / {getFreqLabel(sub.plan)}</span>
+                        <span style={st.subPrice}>{sub.plan?.price} {'\u20BA'} / {getFreqLabel(sub.plan)}</span>
                     </div>
                 </div>
                 <Badge status={sub.status} />
@@ -372,7 +372,7 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
 
             <div style={st.infoGrid}>
                 <InfoItem icon="event" label={'Sonraki \u00d6deme'} value={formatDate(sub.nextPaymentDate)} />
-                <InfoItem icon="today" label="Ba?lang??" value={formatDate(sub.startDate)} />
+                <InfoItem icon="today" label={'Ba\u015flang\u0131\u00e7'} value={formatDate(sub.startDate)} />
                 <InfoItem icon="date_range" label="Dönem Sonu" value={formatDate(sub.currentPeriodEnd)} />
                 <InfoItem icon="info" label="Durum" value={isActive ? 'Aktif' : sub.status === 'CANCELLED' ? 'İptal Edildi' : sub.status} />
             </div>
@@ -383,7 +383,7 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                         <div style={{ flex: 1 }}>
                             <label style={st.freqLabel}>
                                 <span className="material-icons-outlined" style={{ fontSize: 16, verticalAlign: 'middle', marginRight: 4 }}>schedule</span>
-                                Teslimat S?kl???
+                                {'Teslimat S\u0131kl\u0131\u011f\u0131'}
                             </label>
                             <select style={st.select} defaultValue={getFreqValue(sub.plan)} onChange={(e) => onUpdateFreq(sub.id, e.target.value)}>
                                 <option value="1_minute">Dakikada bir</option>
