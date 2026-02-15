@@ -36,6 +36,12 @@ const CITY_DISTRICTS = {
     Zonguldak: ['Alapli', 'Catalagzi', 'Caycuma', 'Devrek', 'Gokcebey', 'Karadenizeregli', 'Kilimli', 'Merkez'],
 };
 
+function formatCurrency(value) {
+    const amount = Number.parseFloat(value);
+    if (!Number.isFinite(amount)) return '0,00 ₺';
+    return `${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
+}
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -342,7 +348,7 @@ export default function CheckoutPage() {
         const normalized = normalizeFrequencyInput(subscriptionFrequency, subscriptionFrequencyLabel);
         if (normalized.label) return normalized.label;
         const freq = normalized.frequency;
-        if (!freq) return 'Aylik';
+        if (!freq) return 'Aylık';
         const m = String(freq).match(/^(\d+)_(week|month|minute)$/i);
         if (m) {
             const count = parseInt(m[1], 10) || 1;
@@ -350,7 +356,7 @@ export default function CheckoutPage() {
             const label = unit === 'week' ? 'haftada bir' : unit === 'minute' ? 'dakikada bir' : 'ayda bir';
             return `${count} ${label}`;
         }
-        return 'Aylik';
+        return 'Aylık';
     }
 
     function handleInputChange(e) {
@@ -369,9 +375,9 @@ export default function CheckoutPage() {
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (items.length === 0) { alert('Sepetiniz bos'); return; }
+        if (items.length === 0) { alert('Sepetiniz boş'); return; }
         if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone || !formData.city || !formData.address) {
-            alert('Lutfen tum zorunlu alanlari doldurun'); return;
+            alert('Lütfen tüm zorunlu alanları doldurun'); return;
         }
         setSubmitting(true);
         try {
@@ -408,18 +414,18 @@ export default function CheckoutPage() {
             if (data.success) {
                 const redirectUrl = data.paymentPageUrl || (data.token ? `https://cpp.iyzipay.com?token=${encodeURIComponent(data.token)}&lang=tr` : '');
                 if (redirectUrl) {
-                    // iyzico odeme sayfasina yonlendir
+                    // iyzico ödeme sayfasına yönlendir
                     window.location.href = redirectUrl;
                     return;
                 }
-                alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: Odeme URL'i olusturulamadi`);
+                alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: Ödeme URL'i oluşturulamadı`);
                 setSubmitting(false);
             } else {
                 alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: ${data.details || ''}`);
                 setSubmitting(false);
             }
         } catch (err) {
-            alert(`Baglanti hatasi: ${err.message}`);
+            alert(`Bağlantı hatası: ${err.message}`);
             setSubmitting(false);
         }
     }
@@ -460,40 +466,40 @@ export default function CheckoutPage() {
                 <div className="co-wrap">
                     <div className="co-nav">
                         <img src={shopLogo} alt="Logo" className="co-logo" onError={(e) => { e.target.style.display = 'none'; }} />
-                        <span className="co-breadcrumb">Sepet &gt; <strong>Adres</strong> &gt; Odeme</span>
+                        <span className="co-breadcrumb">Sepet &gt; <strong>Adres</strong> &gt; Ödeme</span>
                     </div>
 
                     {/* SATIN ALMA TIPI */}
                     <div className={`co-purchase-badge ${isSubscription ? 'sub' : 'single'}`}>
                         <Icon name={isSubscription ? 'autorenew' : 'shopping_cart'} size={22} />
                         <span className="co-purchase-badge-text">
-                            {isSubscription ? 'Abonelik Siparisi - Duzenli teslimat' : 'Tek Seferlik Siparis'}
+                            {isSubscription ? 'Abonelik Siparişi - Düzenli teslimat' : 'Tek Seferlik Sipariş'}
                         </span>
                     </div>
 
                     {/* ABONELIK BILGI KUTUSU */}
                     {isSubscription && (
                         <div className="co-sub-details">
-                            <div className="co-sub-details-title"><Icon name="event_note" size={18} /> Abonelik Detaylari</div>
+                            <div className="co-sub-details-title"><Icon name="event_note" size={18} /> Abonelik Detayları</div>
                             <div className="co-sub-details-grid">
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Bugunku Odeme</span>
-                                    <span className="co-sub-detail-value">TL {total}</span>
+                                    <span className="co-sub-detail-label">Bugünkü Ödeme</span>
+                                    <span className="co-sub-detail-value">{formatCurrency(total)}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
                                     <span className="co-sub-detail-label">Yenileme Periyodu</span>
                                     <span className="co-sub-detail-value">{getFrequencyText()}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Sonraki Odeme</span>
+                                    <span className="co-sub-detail-label">Sonraki Ödeme</span>
                                     <span className="co-sub-detail-value">{getNextPaymentDate()}</span>
                                 </div>
                                 <div className="co-sub-detail-item">
-                                    <span className="co-sub-detail-label">Yenileme Tutari</span>
-                                    <span className="co-sub-detail-value">TL {total} / {getFrequencyText().toLowerCase()}</span>
+                                    <span className="co-sub-detail-label">Yenileme Tutarı</span>
+                                    <span className="co-sub-detail-value">{formatCurrency(total)} / {getFrequencyText().toLowerCase()}</span>
                                 </div>
                             </div>
-                            <div className="co-sub-details-note"><Icon name="verified_user" size={13} /> Istediginiz zaman iptal edebilirsiniz. Kart bilgileriniz guvenle saklanir.</div>
+                            <div className="co-sub-details-note"><Icon name="verified_user" size={13} /> İstediğiniz zaman iptal edebilirsiniz. Kart bilgileriniz güvenle saklanır.</div>
                         </div>
                     )}
 
@@ -503,8 +509,8 @@ export default function CheckoutPage() {
                             <form onSubmit={handleSubmit}>
                                 <h2 className="co-section-title"><Icon name="location_on" size={22} /> Teslimat Adresi</h2>
                                 <div className="co-row">
-                                    <div className="co-field"><label>Ad <span className="req">*</span></label><input type="text" name="firstName" placeholder="Adiniz" value={formData.firstName} onChange={handleInputChange} required /></div>
-                                    <div className="co-field"><label>Soyad <span className="req">*</span></label><input type="text" name="lastName" placeholder="Soyadiniz" value={formData.lastName} onChange={handleInputChange} required /></div>
+                                    <div className="co-field"><label>Ad <span className="req">*</span></label><input type="text" name="firstName" placeholder="Adınız" value={formData.firstName} onChange={handleInputChange} required /></div>
+                                    <div className="co-field"><label>Soyad <span className="req">*</span></label><input type="text" name="lastName" placeholder="Soyadınız" value={formData.lastName} onChange={handleInputChange} required /></div>
                                 </div>
                                 <div className="co-row">
                                     <div className="co-field"><label>E-posta <span className="req">*</span></label><input type="email" name="email" placeholder="ornek@email.com" value={formData.email} onChange={handleInputChange} required /></div>
@@ -512,14 +518,14 @@ export default function CheckoutPage() {
                                 </div>
                                 <div className="co-row">
                                     <div className="co-field">
-                                        <label>Sehir <span className="req">*</span></label>
+                                        <label>Şehir <span className="req">*</span></label>
                                         <select name="city" value={formData.city} onChange={handleInputChange} required className="co-select">
-                                            <option value="">Sehir secin</option>
+                                            <option value="">Şehir seçin</option>
                                             {cities.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
                                     <div className="co-field">
-                                        <label>Ilce <span className="req">*</span></label>
+                                        <label>İlçe <span className="req">*</span></label>
                                         <select
                                             name="state"
                                             value={formData.state}
@@ -528,7 +534,7 @@ export default function CheckoutPage() {
                                             className="co-select"
                                             disabled={!formData.city}
                                         >
-                                            <option value="">{formData.city ? 'Ilce secin' : 'Once sehir secin'}</option>
+                                            <option value="">{formData.city ? 'İlçe seçin' : 'Önce şehir seçin'}</option>
                                             {districtsForSelectedCity.map((d) => (
                                                 <option key={d} value={d}>{d}</option>
                                             ))}
@@ -536,9 +542,9 @@ export default function CheckoutPage() {
                                     </div>
                                     <div className="co-field co-field-sm"><label>Posta Kodu</label><input type="text" name="zipCode" placeholder="34000" value={formData.zipCode} onChange={handleInputChange} /></div>
                                 </div>
-                                <div className="co-field"><label>Adres <span className="req">*</span></label><textarea name="address" placeholder="Acik teslimat adresinizi girin..." rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required /></div>
+                                <div className="co-field"><label>Adres <span className="req">*</span></label><textarea name="address" placeholder="Açık teslimat adresinizi girin..." rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required /></div>
 
-                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="local_shipping" size={22} /> Kargo Yontemi</h2>
+                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="local_shipping" size={22} /> Kargo Yöntemi</h2>
                                 <div className="co-shipping-options">
                                     {shippingRates.length > 0 ? (
                                         // Shopify'dan gelen kargo yontemleri
@@ -549,7 +555,7 @@ export default function CheckoutPage() {
                                                 <div className="co-ship-info">
                                                     <strong>{rate.name}</strong>
                                                 </div>
-                                                <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ucretsiz' : `TL ${parseFloat(rate.price).toFixed(2)}`}</div>
+                                                <div className="co-ship-price">{parseFloat(rate.price) === 0 ? 'Ücretsiz' : formatCurrency(parseFloat(rate.price).toFixed(2))}</div>
                                             </label>
                                         ))
                                     ) : (
@@ -558,26 +564,26 @@ export default function CheckoutPage() {
                                             <label className={`co-shipping-opt ${shippingMethod === 'free' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="free" checked={shippingMethod === 'free'} onChange={() => setShippingMethod('free')} />
                                                 <div className="co-ship-icon"><Icon name="inventory_2" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Ucretsiz Kargo</strong></div>
-                                                <div className="co-ship-price">Ucretsiz</div>
+                                                <div className="co-ship-info"><strong>Ücretsiz Kargo</strong></div>
+                                                <div className="co-ship-price">Ücretsiz</div>
                                             </label>
                                             <label className={`co-shipping-opt ${shippingMethod === 'express' ? 'active' : ''}`}>
                                                 <input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')} />
                                                 <div className="co-ship-icon"><Icon name="local_shipping" size={26} /></div>
-                                                <div className="co-ship-info"><strong>Hizli Kargo</strong></div>
-                                                <div className="co-ship-price">TL 49,90</div>
+                                                <div className="co-ship-info"><strong>Hızlı Kargo</strong></div>
+                                                <div className="co-ship-price">{formatCurrency(49.9)}</div>
                                             </label>
                                         </>
                                     )}
                                 </div>
 
-                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="payment" size={22} /> Odeme Yontemi</h2>
+                                <h2 className="co-section-title" style={{ marginTop: 36 }}><Icon name="payment" size={22} /> Ödeme Yöntemi</h2>
                                 <div className="co-payment-method">
                                     <div className="co-pay-option active">
                                         <input type="radio" name="payment" checked readOnly />
                                         <div className="co-pay-info">
-                                            <strong>iyzico ile Ode</strong>
-                                            <span>Kredi / Banka Karti</span>
+                                            <strong>iyzico ile Öde</strong>
+                                            <span>Kredi / Banka Kartı</span>
                                         </div>
                                         <div className="co-pay-logos">
                                             <span className="co-iyzico-logo-text">iyzico</span>
@@ -586,7 +592,7 @@ export default function CheckoutPage() {
                                 </div>
 
                                 <button className={`co-pay-btn ${submitting ? 'disabled' : ''}`} type="submit" disabled={submitting}>
-                                    {submitting ? 'Odeme Sayfasina Yonlendiriliyor...' : `Odemeye Gec - TL ${total}`}
+                                    {submitting ? 'Ödeme Sayfasına Yönlendiriliyor...' : `Ödemeye Geç - ${formatCurrency(total)}`}
                                 </button>
                             </form>
                         </div>
@@ -597,7 +603,7 @@ export default function CheckoutPage() {
                                 <h2 className="co-summary-title"><Icon name="shopping_bag" size={20} /> Sepetiniz</h2>
 
                                 {items.length === 0 ? (
-                                    <div className="co-empty"><p>Sepetiniz bos</p></div>
+                                    <div className="co-empty"><p>Sepetiniz boş</p></div>
                                 ) : (
                                     <>
                                         <div className="co-items">
@@ -615,29 +621,28 @@ export default function CheckoutPage() {
                                                             {item.vendor && <span>{item.vendor}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="co-item-price">TL {item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2)}</div>
+                                                    <div className="co-item-price">{formatCurrency(item.line_price || (parseFloat(item.price) * item.quantity).toFixed(2))}</div>
                                                 </div>
                                             ))}
                                         </div>
 
                                         <div className="co-discount">
-                                            <input type="text" placeholder="Indirim kodu" value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} />
+                                            <input type="text" placeholder="İndirim kodu" value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} />
                                             <button type="button" className="co-discount-btn">Uygula</button>
                                         </div>
 
                                         <div className="co-totals">
-                                            <div className="co-total-row"><span>Ara Toplam</span><span>TL {subtotal.toFixed(2)}</span></div>
+                                            <div className="co-total-row"><span>Ara Toplam</span><span>{formatCurrency(subtotal)}</span></div>
                                             {parseFloat(cartData?.total_discount || 0) > 0 && (
-                                                <div className="co-total-row co-discount-row"><span>Indirim</span><span>-TL {cartData.total_discount}</span></div>
+                                                <div className="co-total-row co-discount-row"><span>İndirim</span><span>-{formatCurrency(cartData.total_discount)}</span></div>
                                             )}
-                                            <div className="co-total-row"><span>Kargo</span><span>{shippingCost === 0 ? 'Ucretsiz' : `TL ${shippingCost.toFixed(2)}`}</span></div>
-                                            <div className="co-total-row"><span>Tahmini KDV (%20)</span><span>TL {(subtotal * 0.20).toFixed(2)}</span></div>
-                                            <div className="co-total-row co-total-final"><span>Toplam</span><span>TL {total}</span></div>
+                                            <div className="co-total-row"><span>Kargo</span><span>{shippingCost === 0 ? 'Ücretsiz' : formatCurrency(shippingCost)}</span></div>
+                                            <div className="co-total-row co-total-final"><span>Toplam</span><span>{formatCurrency(total)}</span></div>
                                         </div>
 
                                         <button className={`co-pay-btn co-pay-desktop ${submitting ? 'disabled' : ''}`} type="button" disabled={submitting}
                                             onClick={() => document.querySelector('form')?.requestSubmit()}>
-                                            {submitting ? 'Isleniyor...' : `Odemeye Gec - TL ${total}`}
+                                            {submitting ? 'İşleniyor...' : `Ödemeye Geç - ${formatCurrency(total)}`}
                                         </button>
                                     </>
                                 )}
@@ -645,8 +650,8 @@ export default function CheckoutPage() {
 
                             <div className="co-trust">
                                 <div className="co-trust-item"><Icon name="lock" size={14} /> 256-bit SSL</div>
-                                <div className="co-trust-item"><Icon name="verified_user" size={14} /> iyzico Guvence</div>
-                                <div className="co-trust-item"><Icon name="undo" size={14} /> Kolay Iade</div>
+                                <div className="co-trust-item"><Icon name="verified_user" size={14} /> iyzico Güvence</div>
+                                <div className="co-trust-item"><Icon name="undo" size={14} /> Kolay İade</div>
                             </div>
                         </div>
                     </div>

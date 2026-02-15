@@ -14,6 +14,16 @@ function buildSku({ productId, interval, intervalCount, price }) {
 }
 
 function buildOptionValue({ interval, intervalCount }) {
+  const count = Math.max(1, Number(intervalCount) || 1);
+  const normalizedInterval = String(interval || 'MONTHLY').toUpperCase();
+
+  if (normalizedInterval === 'WEEKLY') return `Abonelik ${count} haftada bir`;
+  if (normalizedInterval === 'MINUTELY') return `Abonelik ${count} dakikada bir`;
+  if (normalizedInterval === 'YEARLY') return `Abonelik ${count} yılda bir`;
+  return `Abonelik ${count} ayda bir`;
+}
+
+function buildLegacyOptionValue({ interval, intervalCount }) {
   return `Subscription ${intervalCount} ${String(interval).toLowerCase()}`;
 }
 
@@ -21,18 +31,20 @@ function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function findMatchingVariant(variants, { sku, optionValue }) {
+function findMatchingVariant(variants, { sku, optionValues }) {
   const normalizedSku = normalizeText(sku);
-  const normalizedOptionValue = normalizeText(optionValue);
+  const normalizedOptionValues = (optionValues || [])
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
 
   const bySku = variants.find((v) => normalizeText(v.sku) === normalizedSku);
   if (bySku) return bySku;
 
-  const byOption1 = variants.find((v) => normalizeText(v.option1) === normalizedOptionValue);
+  const byOption1 = variants.find((v) => normalizedOptionValues.includes(normalizeText(v.option1)));
   if (byOption1) return byOption1;
 
   // Some stores use multi-option titles like "Subscription 2 weekly / Default"
-  return variants.find((v) => normalizeText(v.title).startsWith(normalizedOptionValue));
+  return variants.find((v) => normalizedOptionValues.some((option) => normalizeText(v.title).startsWith(option)));
 }
 
 async function getAllProductVariants(productId) {
@@ -56,6 +68,8 @@ export async function ensurePlanVariant({
   const normalizedPrice = toPriceString(price);
   const sku = buildSku({ productId, interval, intervalCount, price: normalizedPrice });
   const optionValue = buildOptionValue({ interval, intervalCount });
+  const legacyOptionValue = buildLegacyOptionValue({ interval, intervalCount });
+  const optionValues = [optionValue, legacyOptionValue];
 
   if (existingVariantId) {
     try {
@@ -82,7 +96,7 @@ export async function ensurePlanVariant({
   const variants = product.variants || [];
   const extraVariants = await getAllProductVariants(productId);
   const allVariants = [...variants, ...extraVariants];
-  const matched = findMatchingVariant(allVariants, { sku, optionValue });
+  const matched = findMatchingVariant(allVariants, { sku, optionValues });
   if (matched) {
     if (String(matched.price) !== normalizedPrice || String(matched.sku || '') !== sku) {
       await shopifyREST(`/variants/${matched.id}.json`, 'PUT', {
@@ -136,7 +150,7 @@ export async function ensurePlanVariant({
     const extraAfterCreateError = await getAllProductVariants(productId);
     const existing = findMatchingVariant(
       [...variantsAfterCreateError, ...extraAfterCreateError],
-      { sku, optionValue }
+      { sku, optionValues }
     );
 
     if (!existing?.id) {

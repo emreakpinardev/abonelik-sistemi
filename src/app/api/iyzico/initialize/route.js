@@ -59,6 +59,58 @@ function toIyzicoPaymentInterval(interval, intervalCount) {
   }
 }
 
+function parseAmount(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+
+  let normalized = raw
+    .replace(/\s+/g, '')
+    .replace(/₺/g, '')
+    .replace(/TL/gi, '')
+    .replace(/[^0-9,.-]/g, '');
+
+  if (!normalized) return 0;
+
+  const lastComma = normalized.lastIndexOf(',');
+  const lastDot = normalized.lastIndexOf('.');
+  const separatorIndex = Math.max(lastComma, lastDot);
+
+  if (separatorIndex >= 0) {
+    const fractionalRaw = normalized.slice(separatorIndex + 1).replace(/[.,]/g, '');
+    const separatorCount = (normalized.match(/[.,]/g) || []).length;
+    const isLikelyThousandsOnly = separatorCount === 1 && fractionalRaw.length === 3;
+
+    if (isLikelyThousandsOnly) {
+      normalized = normalized.replace(/[.,]/g, '');
+    } else {
+      const integerPart = normalized.slice(0, separatorIndex).replace(/[.,]/g, '');
+      const fractionPart = fractionalRaw;
+      normalized = `${integerPart}.${fractionPart}`;
+    }
+  } else {
+    normalized = normalized.replace(/[.,]/g, '');
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getRequestedPlanPrice(productPrice, cartItems) {
+  const fromTotal = parseAmount(productPrice);
+  if (fromTotal > 0) return fromTotal;
+
+  if (!Array.isArray(cartItems) || cartItems.length === 0) return 0;
+
+  return cartItems.reduce((sum, item) => {
+    const linePrice = parseAmount(item?.line_price);
+    if (linePrice > 0) return sum + linePrice;
+
+    const unit = parseAmount(item?.price);
+    const quantity = Math.max(1, Number.parseInt(item?.quantity, 10) || 1);
+    return sum + (unit > 0 ? unit * quantity : 0);
+  }, 0);
+}
+
 async function ensureIyzicoPlanReferences(plan) {
   let productReferenceCode = plan.iyzicoProductReferenceCode;
   let pricingPlanReferenceCode = plan.iyzicoPricingPlanReferenceCode;
@@ -177,6 +229,7 @@ export async function POST(request) {
     // Subscription flow: iyzico Subscription API
     if (type === 'subscription') {
       let plan = null;
+      const requestedPlanPrice = getRequestedPlanPrice(productPrice, cartItems);
 
       const { interval, intervalCount } = parseFrequency(subscriptionFrequency);
       const firstItem = Array.isArray(cartItems) && cartItems.length > 0 ? cartItems[0] : null;
@@ -216,7 +269,7 @@ export async function POST(request) {
         });
 
         if (!plan) {
-          const autoPrice = Number.parseFloat(productPrice) || 0;
+          const autoPrice = requestedPlanPrice;
           if (autoPrice <= 0) {
             return NextResponse.json({ error: 'Gecersiz fiyat' }, { status: 400 });
           }
@@ -247,6 +300,17 @@ export async function POST(request) {
           },
           { status: 400 }
         );
+      }
+
+      // Keep iyzico pricing plan in sync with current checkout total (KDV dahil fiyat).
+      if (requestedPlanPrice > 0 && Math.abs(Number(plan.price || 0) - requestedPlanPrice) > 0.01) {
+        plan = await prisma.plan.update({
+          where: { id: plan.id },
+          data: {
+            price: requestedPlanPrice,
+            iyzicoPricingPlanReferenceCode: null,
+          },
+        });
       }
 
       const subscription = await prisma.subscription.create({
@@ -321,7 +385,7 @@ export async function POST(request) {
     }
 
     // One-time flow: existing checkout form API
-    const price = Number.parseFloat(productPrice);
+    const price = parseAmount(productPrice);
     if (!price || price <= 0) {
       return NextResponse.json({ error: 'Gecersiz fiyat' }, { status: 400 });
     }
