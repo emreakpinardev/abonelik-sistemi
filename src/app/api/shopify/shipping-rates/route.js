@@ -43,28 +43,38 @@ export async function GET(request) {
     const data = await res.json();
     const zones = data.shipping_zones || [];
 
-    const allowedProfileIds = await getAllowedProfileIdsForVariants({
+    const allowedProfiles = await getAllowedProfilesForVariants({
       shopDomain: SHOPIFY_DOMAIN,
       accessToken: SHOPIFY_TOKEN,
       apiVersion: API_VERSION,
       variantIds,
     });
-
-    const shouldFilterByProfile = allowedProfileIds.size > 0;
+    const allowedProfileIds = allowedProfiles.ids;
+    const allowedProfileNames = allowedProfiles.names;
+    const shouldFilterByProfile = allowedProfileIds.size > 0 || allowedProfileNames.size > 0;
     console.log(
       '[Shipping] city:',
       city,
       '| zones:',
       zones.length,
       '| profile filter:',
-      shouldFilterByProfile ? Array.from(allowedProfileIds).join(',') : 'none'
+      shouldFilterByProfile
+        ? `ids=[${Array.from(allowedProfileIds).join(',')}] names=[${Array.from(allowedProfileNames).join(',')}]`
+        : 'none'
     );
 
     const rates = [];
     for (const zone of zones) {
       const zoneProfileId = getZoneProfileId(zone);
-      if (shouldFilterByProfile && zoneProfileId && !allowedProfileIds.has(zoneProfileId)) {
-        continue;
+      if (shouldFilterByProfile) {
+        let keep = true;
+        if (allowedProfileIds.size > 0 && zoneProfileId) {
+          keep = allowedProfileIds.has(zoneProfileId);
+        } else if (allowedProfileNames.size > 0) {
+          const zoneName = String(zone.name || '').toLowerCase();
+          keep = Array.from(allowedProfileNames).some((n) => zoneName.includes(n.toLowerCase()));
+        }
+        if (!keep) continue;
       }
 
       const isTurkey = zone.countries?.some(
@@ -146,60 +156,102 @@ function collectRatesFromZone(zone) {
 
 function getZoneProfileId(zone) {
   if (!zone || typeof zone !== 'object') return null;
-  const direct = zone.profile_id || zone.shipping_profile_id || zone.profileId || null;
+  const direct =
+    zone.profile_id ||
+    zone.shipping_profile_id ||
+    zone.profileId ||
+    zone.profile?.id ||
+    zone.shipping_profile?.id ||
+    null;
   if (direct == null) return null;
+  const gidMatch = String(direct).match(/\/(\d+)$/);
+  if (gidMatch) return gidMatch[1];
   const n = parseInt(String(direct), 10);
   return Number.isFinite(n) ? String(n) : String(direct);
 }
 
-async function getAllowedProfileIdsForVariants({ shopDomain, accessToken, apiVersion, variantIds }) {
-  const result = new Set();
-  if (!variantIds || variantIds.length === 0) return result;
+async function getAllowedProfilesForVariants({ shopDomain, accessToken, apiVersion, variantIds }) {
+  const ids = new Set();
+  const names = new Set();
+  if (!variantIds || variantIds.length === 0) return { ids, names };
 
   try {
     const gqlUrl = `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`;
     const ids = variantIds.map((id) => `gid://shopify/ProductVariant/${id}`);
+    const run = async (query) => {
+      const res = await fetch(gqlUrl, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query, variables: { ids } }),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    };
 
-    const query = `
-      query VariantProfiles($ids: [ID!]!) {
+    // Attempt 1: deliveryProfile directly on ProductVariant
+    let json = await run(`
+      query VariantProfilesV1($ids: [ID!]!) {
         nodes(ids: $ids) {
           ... on ProductVariant {
             id
-            product {
+            deliveryProfile {
               id
-              deliveryProfile {
-                id
-                name
-              }
+              name
             }
           }
         }
       }
-    `;
-
-    const res = await fetch(gqlUrl, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query, variables: { ids } }),
-    });
-
-    if (!res.ok) return result;
-
-    const json = await res.json();
-    const nodes = json?.data?.nodes || [];
+    `);
+    if (json?.errors?.length) {
+      console.warn('[Shipping] VariantProfilesV1 errors:', JSON.stringify(json.errors));
+    }
+    let nodes = json?.data?.nodes || [];
     for (const node of nodes) {
-      const profileGid = node?.product?.deliveryProfile?.id || '';
+      const profileGid = node?.deliveryProfile?.id || '';
+      const profileName = node?.deliveryProfile?.name || '';
+      if (profileName) names.add(String(profileName));
       const m = String(profileGid).match(/\/(\d+)$/);
-      if (m) result.add(m[1]);
+      if (m) ids.add(m[1]);
+    }
+
+    // Attempt 2: deliveryProfile via Product
+    if (ids.size === 0 && names.size === 0) {
+      json = await run(`
+        query VariantProfilesV2($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on ProductVariant {
+              id
+              product {
+                id
+                deliveryProfile {
+                  id
+                  name
+                }
+              }
+            }
+          }
+        }
+      `);
+      if (json?.errors?.length) {
+        console.warn('[Shipping] VariantProfilesV2 errors:', JSON.stringify(json.errors));
+      }
+      nodes = json?.data?.nodes || [];
+      for (const node of nodes) {
+        const profileGid = node?.product?.deliveryProfile?.id || '';
+        const profileName = node?.product?.deliveryProfile?.name || '';
+        if (profileName) names.add(String(profileName));
+        const m = String(profileGid).match(/\/(\d+)$/);
+        if (m) ids.add(m[1]);
+      }
     }
   } catch (err) {
     console.error('[Shipping] Variant profile lookup hatasi:', err);
   }
 
-  return result;
+  return { ids, names };
 }
 
 function buildRatesFromZones(zones) {
