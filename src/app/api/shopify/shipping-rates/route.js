@@ -3,123 +3,237 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 /**
- * Shopify Carrier Service API üzerinden kargo yöntemlerini çeker
- * Shopify Admin API ile shipping zones ve rates bilgisi alınır
- * GET /api/shopify/shipping-rates?city=Istanbul
+ * Shopify Admin API ile shipping zones/rates bilgisi alir.
+ * variant_ids verilirse ilgili urunlerin delivery profile'ina gore filtre uygular.
+ * GET /api/shopify/shipping-rates?city=Istanbul&variant_ids=123,456
  */
 export async function GET(request) {
-    try {
-        const { searchParams } = new URL(request.url);
-        const city = searchParams.get('city') || 'Istanbul';
+  try {
+    const { searchParams } = new URL(request.url);
+    const city = searchParams.get('city') || 'Istanbul';
+    const variantIdsParam = searchParams.get('variant_ids') || '';
+    const variantIds = variantIdsParam
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => /^\d+$/.test(v));
 
-        const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
-        const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
-        const API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-10';
+    const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+    const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+    const API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-10';
 
-        if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
-            return NextResponse.json({ rates: getDefaultRates() });
-        }
-
-        // Shopify Admin API ile shipping zones bilgisini cek
-        const res = await fetch(
-            `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/shipping_zones.json`,
-            {
-                headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-
-        if (!res.ok) {
-            console.error('Shopify shipping zones hatasi:', res.status);
-            return NextResponse.json({ rates: getDefaultRates() });
-        }
-
-        const data = await res.json();
-        const zones = data.shipping_zones || [];
-        console.log('[Shipping] Zones bulundu:', zones.length, 'adet. Isimler:', zones.map(z => z.name).join(', '));
-
-        // Turkiye icin uygun zone'u bul
-        const rates = [];
-        for (const zone of zones) {
-            // Zone'un Turkiye'yi icerip icermedigini kontrol et
-            const isTurkey = zone.countries?.some(c =>
-                c.code === 'TR' || c.name?.toLowerCase().includes('turkey') || c.name?.toLowerCase().includes('türkiye')
-            );
-
-            // "Rest of World" zone'u da kabul et
-            const isRestOfWorld = zone.name?.toLowerCase().includes('rest of world') || zone.name?.toLowerCase().includes('domestic');
-
-            if (isTurkey || isRestOfWorld || zones.length === 1) {
-                // Bu zone'daki price-based shipping rate'leri al
-                const priceRates = zone.price_based_shipping_rates || [];
-                for (const rate of priceRates) {
-                    rates.push({
-                        id: `price_${rate.id}`,
-                        name: rate.name,
-                        price: rate.price || '0.00',
-                        delivery_days: rate.name.toLowerCase().includes('hızlı') || rate.name.toLowerCase().includes('express')
-                            ? '1-3 İş Günü'
-                            : rate.name.toLowerCase().includes('ücretsiz') || rate.name.toLowerCase().includes('free')
-                                ? '7-10 İş Günü'
-                                : '3-5 İş Günü',
-                    });
-                }
-
-                // Weight-based rate'ler
-                const weightRates = zone.weight_based_shipping_rates || [];
-                for (const rate of weightRates) {
-                    rates.push({
-                        id: `weight_${rate.id}`,
-                        name: rate.name,
-                        price: rate.price || '0.00',
-                        delivery_days: '3-7 İş Günü',
-                    });
-                }
-
-                // Carrier-based rate'ler (3PL entegrasyonlari)
-                const carrierRates = zone.carrier_shipping_rate_providers || [];
-                for (const carrier of carrierRates) {
-                    // Carrier service rate'leri gercek zamanli hesaplanir, burada sadece listeriz
-                    rates.push({
-                        id: `carrier_${carrier.id}`,
-                        name: carrier.carrier_service?.name || 'Kargo',
-                        price: '0.00',
-                        delivery_days: '3-5 İş Günü',
-                    });
-                }
-            }
-        }
-
-        console.log('[Shipping] Bulunan rate sayisi:', rates.length, rates.map(r => `${r.name}:${r.price}`).join(', '));
-
-        // Eger hicbir rate bulamazsa varsayilanlari dondur
-        if (rates.length === 0) {
-            console.log('[Shipping] Rate bulunamadi, varsayilan donuyor');
-            return NextResponse.json({ rates: getDefaultRates() });
-        }
-
-        return NextResponse.json({ rates });
-    } catch (err) {
-        console.error('Shipping rates hatasi:', err);
-        return NextResponse.json({ rates: getDefaultRates() });
+    if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
+      return NextResponse.json({ rates: getDefaultRates() });
     }
+
+    const res = await fetch(
+      `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/shipping_zones.json`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!res.ok) {
+      console.error('Shopify shipping zones hatasi:', res.status);
+      return NextResponse.json({ rates: getDefaultRates() });
+    }
+
+    const data = await res.json();
+    const zones = data.shipping_zones || [];
+
+    const allowedProfileIds = await getAllowedProfileIdsForVariants({
+      shopDomain: SHOPIFY_DOMAIN,
+      accessToken: SHOPIFY_TOKEN,
+      apiVersion: API_VERSION,
+      variantIds,
+    });
+
+    const shouldFilterByProfile = allowedProfileIds.size > 0;
+    console.log(
+      '[Shipping] city:',
+      city,
+      '| zones:',
+      zones.length,
+      '| profile filter:',
+      shouldFilterByProfile ? Array.from(allowedProfileIds).join(',') : 'none'
+    );
+
+    const rates = [];
+    for (const zone of zones) {
+      const zoneProfileId = getZoneProfileId(zone);
+      if (shouldFilterByProfile && zoneProfileId && !allowedProfileIds.has(zoneProfileId)) {
+        continue;
+      }
+
+      const isTurkey = zone.countries?.some(
+        (c) =>
+          c.code === 'TR' ||
+          c.name?.toLowerCase().includes('turkey') ||
+          c.name?.toLowerCase().includes('turkiye')
+      );
+
+      const isRestOfWorld =
+        zone.name?.toLowerCase().includes('rest of world') ||
+        zone.name?.toLowerCase().includes('domestic');
+
+      if (isTurkey || isRestOfWorld || zones.length === 1) {
+        rates.push(...collectRatesFromZone(zone));
+      }
+    }
+
+    if (rates.length === 0 && shouldFilterByProfile) {
+      const fallbackRates = buildRatesFromZones(zones);
+      if (fallbackRates.length > 0) {
+        console.log('[Shipping] profile filtresiyle rate yok, filtresiz fallback donuyor');
+        return NextResponse.json({ rates: fallbackRates });
+      }
+    }
+
+    if (rates.length === 0) {
+      console.log('[Shipping] Rate bulunamadi, varsayilan donuyor');
+      return NextResponse.json({ rates: getDefaultRates() });
+    }
+
+    return NextResponse.json({ rates });
+  } catch (err) {
+    console.error('Shipping rates hatasi:', err);
+    return NextResponse.json({ rates: getDefaultRates() });
+  }
+}
+
+function collectRatesFromZone(zone) {
+  const rates = [];
+
+  const priceRates = zone.price_based_shipping_rates || [];
+  for (const rate of priceRates) {
+    const lower = String(rate.name || '').toLowerCase();
+    rates.push({
+      id: `price_${rate.id}`,
+      name: rate.name,
+      price: rate.price || '0.00',
+      delivery_days: lower.includes('hizli') || lower.includes('express')
+        ? '1-3 Is Gunu'
+        : lower.includes('ucretsiz') || lower.includes('free')
+          ? '7-10 Is Gunu'
+          : '3-5 Is Gunu',
+    });
+  }
+
+  const weightRates = zone.weight_based_shipping_rates || [];
+  for (const rate of weightRates) {
+    rates.push({
+      id: `weight_${rate.id}`,
+      name: rate.name,
+      price: rate.price || '0.00',
+      delivery_days: '3-7 Is Gunu',
+    });
+  }
+
+  const carrierRates = zone.carrier_shipping_rate_providers || [];
+  for (const carrier of carrierRates) {
+    rates.push({
+      id: `carrier_${carrier.id}`,
+      name: carrier.carrier_service?.name || 'Kargo',
+      price: '0.00',
+      delivery_days: '3-5 Is Gunu',
+    });
+  }
+
+  return rates;
+}
+
+function getZoneProfileId(zone) {
+  if (!zone || typeof zone !== 'object') return null;
+  const direct = zone.profile_id || zone.shipping_profile_id || zone.profileId || null;
+  if (direct == null) return null;
+  const n = parseInt(String(direct), 10);
+  return Number.isFinite(n) ? String(n) : String(direct);
+}
+
+async function getAllowedProfileIdsForVariants({ shopDomain, accessToken, apiVersion, variantIds }) {
+  const result = new Set();
+  if (!variantIds || variantIds.length === 0) return result;
+
+  try {
+    const gqlUrl = `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`;
+    const ids = variantIds.map((id) => `gid://shopify/ProductVariant/${id}`);
+
+    const query = `
+      query VariantProfiles($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on ProductVariant {
+            id
+            product {
+              id
+              deliveryProfile {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const res = await fetch(gqlUrl, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables: { ids } }),
+    });
+
+    if (!res.ok) return result;
+
+    const json = await res.json();
+    const nodes = json?.data?.nodes || [];
+    for (const node of nodes) {
+      const profileGid = node?.product?.deliveryProfile?.id || '';
+      const m = String(profileGid).match(/\/(\d+)$/);
+      if (m) result.add(m[1]);
+    }
+  } catch (err) {
+    console.error('[Shipping] Variant profile lookup hatasi:', err);
+  }
+
+  return result;
+}
+
+function buildRatesFromZones(zones) {
+  const rates = [];
+  for (const zone of zones || []) {
+    const isTurkey = zone.countries?.some(
+      (c) =>
+        c.code === 'TR' ||
+        c.name?.toLowerCase().includes('turkey') ||
+        c.name?.toLowerCase().includes('turkiye')
+    );
+    const isRestOfWorld =
+      zone.name?.toLowerCase().includes('rest of world') ||
+      zone.name?.toLowerCase().includes('domestic');
+
+    if (!(isTurkey || isRestOfWorld || (zones || []).length === 1)) continue;
+    rates.push(...collectRatesFromZone(zone));
+  }
+  return rates;
 }
 
 function getDefaultRates() {
-    return [
-        {
-            id: 'free',
-            name: 'Ücretsiz Kargo',
-            price: '0.00',
-            delivery_days: '7-10 İş Günü',
-        },
-        {
-            id: 'express',
-            name: 'Hızlı Kargo',
-            price: '49.90',
-            delivery_days: '1-3 İş Günü',
-        },
-    ];
+  return [
+    {
+      id: 'free',
+      name: 'Ucretsiz Kargo',
+      price: '0.00',
+      delivery_days: '7-10 Is Gunu',
+    },
+    {
+      id: 'express',
+      name: 'Hizli Kargo',
+      price: '49.90',
+      delivery_days: '1-3 Is Gunu',
+    },
+  ];
 }

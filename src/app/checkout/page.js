@@ -195,7 +195,19 @@ export default function CheckoutPage() {
 
     async function fetchShippingRates() {
         try {
-            const res = await fetch(`/api/shopify/shipping-rates?city=${encodeURIComponent(formData.city)}`);
+            const variantIds = Array.from(
+                new Set(
+                    (items || [])
+                        .map((i) => i?.variant_id)
+                        .filter(Boolean)
+                        .map((v) => String(v))
+                )
+            );
+            const params = new URLSearchParams({
+                city: formData.city || '',
+                variant_ids: variantIds.join(','),
+            });
+            const res = await fetch(`/api/shopify/shipping-rates?${params.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.rates && data.rates.length > 0) {
