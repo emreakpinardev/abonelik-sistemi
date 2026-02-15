@@ -187,6 +187,37 @@ export async function initializeSubscriptionCheckoutForm({
 }
 
 /**
+ * Subscription API: kart guncelleme checkout baslat
+ */
+export async function initializeSubscriptionCardUpdateCheckoutForm({
+    callbackUrl,
+    customerReferenceCode,
+    subscriptionReferenceCode,
+    conversationId,
+    locale = 'tr',
+}) {
+    if (!callbackUrl) {
+        throw new Error('callbackUrl gerekli');
+    }
+    if (!customerReferenceCode) {
+        throw new Error('customerReferenceCode gerekli');
+    }
+
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_card_update_${Date.now()}`,
+        callbackUrl,
+        customerReferenceCode,
+    };
+
+    if (subscriptionReferenceCode) {
+        body.subscriptionReferenceCode = subscriptionReferenceCode;
+    }
+
+    return await iyzicoRequest('/v2/subscription/card-update/checkoutform/initialize', body);
+}
+
+/**
  * Subscription API: checkout sonucu al
  */
 export async function retrieveSubscriptionCheckoutForm(token, conversationId) {

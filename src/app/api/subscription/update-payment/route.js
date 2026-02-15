@@ -1,6 +1,9 @@
 ﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { initializeCheckoutForm } from '@/lib/iyzico';
+import {
+    initializeCheckoutForm,
+    initializeSubscriptionCardUpdateCheckoutForm,
+} from '@/lib/iyzico';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -44,20 +47,50 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Aktif abonelik bulunamadi' }, { status: 404 });
         }
 
+        // Subscription API aboneliklerinde dogrudan kart guncelleme checkout'u
         if (subscription.iyzicoSubscriptionRef) {
-            return NextResponse.json({
-                success: false,
-                requiresExternalCardUpdate: true,
-                paymentPageUrl: getIyzicoCustomerPanelUrl(),
-                message: 'Bu abonelik iyzico Subscription API ile yonetiliyor. Kart guncelleme islemini iyzico musteri panelinden tamamlayin.',
+            if (!subscription.iyzicoCustomerRef) {
+                return NextResponse.json({
+                    success: false,
+                    requiresExternalCardUpdate: true,
+                    paymentPageUrl: getIyzicoCustomerPanelUrl(),
+                    message: 'Kart guncelleme icin iyzico musteri referansi bulunamadi. Lutfen destek ile iletisime gecin.',
+                }, { status: 400 });
+            }
+
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+            const cardUpdateResult = await initializeSubscriptionCardUpdateCheckoutForm({
+                conversationId: `sub_card_update_${subscriptionId}`,
+                customerReferenceCode: subscription.iyzicoCustomerRef,
+                subscriptionReferenceCode: subscription.iyzicoSubscriptionRef,
+                callbackUrl: `${appUrl}/api/iyzico/callback?type=card_update_sub&subscriptionId=${subscriptionId}`,
             });
+
+            if (cardUpdateResult.status === 'success') {
+                const token = cardUpdateResult.token;
+                const paymentPageUrl =
+                    cardUpdateResult.checkoutFormPageUrl ||
+                    cardUpdateResult.paymentPageUrl ||
+                    (token ? `https://cpp.iyzipay.com?token=${encodeURIComponent(token)}&lang=tr` : null);
+
+                if (paymentPageUrl) {
+                    return NextResponse.json({
+                        success: true,
+                        paymentPageUrl,
+                    });
+                }
+            }
+
+            return NextResponse.json({
+                error: cardUpdateResult.errorMessage || 'iyzico kart guncelleme formu olusturulamadi',
+            }, { status: 400 });
         }
 
         const plan = subscription.plan;
         const basketId = uuidv4();
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        // iyzico checkout formunu baslat (1 TL ile kart dogrulama + kaydetme)
+        // Legacy: iyzico checkout formunu baslat (1 TL ile kart dogrulama + kaydetme)
         const checkoutData = {
             locale: 'tr',
             conversationId: `card_update_${subscriptionId}`,
@@ -110,15 +143,13 @@ export async function POST(request) {
                 success: true,
                 paymentPageUrl: result.paymentPageUrl,
             });
-        } else {
-            return NextResponse.json({
-                error: result.errorMessage || 'iyzico form olusturulamadi',
-            }, { status: 400 });
         }
 
+        return NextResponse.json({
+            error: result.errorMessage || 'iyzico form olusturulamadi',
+        }, { status: 400 });
     } catch (error) {
         console.error('Update payment error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
-

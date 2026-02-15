@@ -143,6 +143,12 @@ export async function POST(request) {
       return redirectToResult('error', paymentResult.errorMessage || 'Kart guncelleme basarisiz oldu');
     }
 
+    // Subscription API card update flow
+    if (paymentType === 'card_update_sub') {
+      // token exists => iyzico card update checkout completed and callback reached.
+      return redirectToResult('success', 'Kart bilgileriniz guncellendi!');
+    }
+
     // Subscription flow via iyzico Subscription API
     if (!subscriptionId) {
       return redirectToResult('error', 'Abonelik bilgisi eksik');
