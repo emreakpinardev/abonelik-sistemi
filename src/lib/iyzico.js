@@ -199,16 +199,19 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
     if (!callbackUrl) {
         throw new Error('callbackUrl gerekli');
     }
-    if (!customerReferenceCode) {
-        throw new Error('customerReferenceCode gerekli');
+    if (!customerReferenceCode && !subscriptionReferenceCode) {
+        throw new Error('customerReferenceCode veya subscriptionReferenceCode gerekli');
     }
 
     const body = {
         locale,
         conversationId: conversationId || `sub_card_update_${Date.now()}`,
         callbackUrl,
-        customerReferenceCode,
     };
+
+    if (customerReferenceCode) {
+        body.customerReferenceCode = customerReferenceCode;
+    }
 
     if (subscriptionReferenceCode) {
         body.subscriptionReferenceCode = subscriptionReferenceCode;

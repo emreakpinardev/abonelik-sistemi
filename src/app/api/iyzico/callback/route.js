@@ -185,14 +185,20 @@ export async function POST(request) {
       return redirectToResult('error', subscriptionResult.errorMessage || 'Abonelik olusturulamadi');
     }
 
+    const resultData = subscriptionResult.data || {};
     const iyzicoSubRef =
-      subscriptionResult.data?.subscriptionReferenceCode ||
+      resultData.subscriptionReferenceCode ||
+      resultData.subscription?.referenceCode ||
+      resultData.subscription?.subscriptionReferenceCode ||
       subscriptionResult.subscriptionReferenceCode ||
-      subscriptionResult.data?.referenceCode ||
+      resultData.referenceCode ||
       null;
     const iyzicoCustomerRef =
-      subscriptionResult.data?.customerReferenceCode ||
+      resultData.customerReferenceCode ||
+      resultData.customer?.referenceCode ||
+      resultData.customer?.customerReferenceCode ||
       subscriptionResult.customerReferenceCode ||
+      subscriptionResult.customer?.referenceCode ||
       null;
 
     const now = new Date();

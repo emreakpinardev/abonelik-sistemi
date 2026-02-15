@@ -14,7 +14,7 @@ function getIyzicoCustomerPanelUrl() {
         process.env.NEXT_PUBLIC_IYZICO_CUSTOMER_PANEL_URL ||
         process.env.IYZICO_CUSTOMER_PORTAL_URL ||
         process.env.NEXT_PUBLIC_IYZICO_CUSTOMER_PORTAL_URL ||
-        'https://www.iyzico.com/'
+        null
     );
 }
 
@@ -49,19 +49,10 @@ export async function POST(request) {
 
         // Subscription API aboneliklerinde dogrudan kart guncelleme checkout'u
         if (subscription.iyzicoSubscriptionRef) {
-            if (!subscription.iyzicoCustomerRef) {
-                return NextResponse.json({
-                    success: false,
-                    requiresExternalCardUpdate: true,
-                    paymentPageUrl: getIyzicoCustomerPanelUrl(),
-                    message: 'Kart guncelleme icin iyzico musteri referansi bulunamadi. Lutfen destek ile iletisime gecin.',
-                }, { status: 400 });
-            }
-
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
             const cardUpdateResult = await initializeSubscriptionCardUpdateCheckoutForm({
                 conversationId: `sub_card_update_${subscriptionId}`,
-                customerReferenceCode: subscription.iyzicoCustomerRef,
+                customerReferenceCode: subscription.iyzicoCustomerRef || undefined,
                 subscriptionReferenceCode: subscription.iyzicoSubscriptionRef,
                 callbackUrl: `${appUrl}/api/iyzico/callback?type=card_update_sub&subscriptionId=${subscriptionId}`,
             });
@@ -83,6 +74,8 @@ export async function POST(request) {
 
             return NextResponse.json({
                 error: cardUpdateResult.errorMessage || 'iyzico kart guncelleme formu olusturulamadi',
+                requiresExternalCardUpdate: true,
+                ...(getIyzicoCustomerPanelUrl() ? { paymentPageUrl: getIyzicoCustomerPanelUrl() } : {}),
             }, { status: 400 });
         }
 
