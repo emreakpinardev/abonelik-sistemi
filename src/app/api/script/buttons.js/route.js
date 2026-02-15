@@ -32,7 +32,11 @@ export async function GET() {
       setFrequency('3_week', '3 haftada bir');
       return true;
     }
-    if (/^(4 hafta|4 haftada|monthly|aylik|ayda bir|every month|her ay|1 ay)/i.test(text) || text === 'ayda bir') {
+    if (/^(4 hafta|4 haftada|every 4 week|4 weekly)/i.test(text) || text === '4 haftada bir') {
+      setFrequency('4_week', '4 haftada bir');
+      return true;
+    }
+    if (/^(monthly|aylik|ayda bir|every month|her ay|1 ay)/i.test(text) || text === 'ayda bir') {
       setFrequency('1_month', '1 ayda bir');
       return true;
     }
@@ -175,6 +179,19 @@ export async function GET() {
     }, true);
   }
 
+  // Remove legacy button injected by older script versions.
+  function cleanupLegacySettingsButtons() {
+    try {
+      document.querySelectorAll('[data-open-custom-checkout-settings]').forEach(function(el) { el.remove(); });
+      document.querySelectorAll('button, a').forEach(function(el) {
+        var txt = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (txt.includes('teslimat') && txt.includes('abonelik') && txt.includes('ayar')) {
+          el.remove();
+        }
+      });
+    } catch (_) {}
+  }
+
   function redirectToOurCheckout() {
     detectCurrentSelection();
     detectCurrentFrequency();
@@ -192,7 +209,7 @@ export async function GET() {
         var frequencyLabel = sessionStorage.getItem('subscription_frequency_label') || '';
         var planId = '';
 
-        // priority: properties(3) > selling_plan(2) > sku/text(1) > session(0)
+        // priority: variant/selling_plan > properties > sku/text > session
         var best = { code: '', label: '', priority: -1 };
         function pick(code, label, priority) {
           if (!code) return;
@@ -227,8 +244,8 @@ export async function GET() {
               var unit = String(item.properties.shipping_interval_unit_type).toLowerCase();
               var freq = parseInt(item.properties.shipping_interval_frequency, 10) || 1;
               if (freq < 1 || freq > 12) freq = 1;
-              if (unit.indexOf('week') !== -1 || unit.indexOf('hafta') !== -1) pick(freq + '_week', freq + ' haftada bir', 3);
-              if (unit.indexOf('month') !== -1 || unit.indexOf('ay') !== -1) pick(freq + '_month', freq + ' ayda bir', 3);
+              if (unit.indexOf('week') !== -1 || unit.indexOf('hafta') !== -1) pick(freq + '_week', freq + ' haftada bir', 2);
+              if (unit.indexOf('month') !== -1 || unit.indexOf('ay') !== -1) pick(freq + '_month', freq + ' ayda bir', 2);
             }
 
             try {
@@ -236,14 +253,20 @@ export async function GET() {
                 var v = item.properties[k];
                 if (v == null) return;
                 var d = deriveFromText(String(k) + ' ' + String(v));
-                if (d) pick(d.code, d.label, 3);
+                if (d) pick(d.code, d.label, 2);
               });
             } catch (_) {}
           }
 
           if (item.selling_plan_allocation && item.selling_plan_allocation.selling_plan) {
             var d1 = deriveFromText(item.selling_plan_allocation.selling_plan.name || '');
-            if (d1) pick(d1.code, d1.label, 2);
+            if (d1) pick(d1.code, d1.label, 4);
+          }
+
+          // Fallback for subscription variants like "Subscription 3 weekly"
+          if (item.variant_title) {
+            var dVariant = deriveFromText(item.variant_title || '');
+            if (dVariant) pick(dVariant.code, dVariant.label, 5);
           }
 
           if (item.sku) {
@@ -343,12 +366,16 @@ export async function GET() {
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
+      cleanupLegacySettingsButtons();
       trackPurchaseType();
       interceptCheckout();
+      setTimeout(cleanupLegacySettingsButtons, 300);
     });
   } else {
+    cleanupLegacySettingsButtons();
     trackPurchaseType();
     interceptCheckout();
+    setTimeout(cleanupLegacySettingsButtons, 300);
   }
 })();
 `;
