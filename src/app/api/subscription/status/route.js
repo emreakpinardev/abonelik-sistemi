@@ -3,6 +3,37 @@ import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function normalizePayments(payments = [], limit = 10) {
+    const bucket = new Map();
+    for (const p of payments) {
+        const key = p.iyzicoPaymentId
+            ? `pid:${p.iyzicoPaymentId}`
+            : p.iyzicoPaymentTransactionId
+                ? `ptid:${p.iyzicoPaymentTransactionId}`
+                : `id:${p.id}`;
+        const arr = bucket.get(key) || [];
+        arr.push(p);
+        bucket.set(key, arr);
+    }
+
+    const deduped = [];
+    for (const arr of bucket.values()) {
+        const success = arr
+            .filter((x) => x.status === 'SUCCESS')
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        if (success.length > 0) {
+            deduped.push(success[0]);
+            continue;
+        }
+        const latest = arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        deduped.push(latest);
+    }
+
+    return deduped
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, limit);
+}
+
 /**
  * GET /api/subscription/status?id=xxx
  * Abonelik durumunu sorgula
@@ -23,7 +54,7 @@ export async function GET(request) {
                     plan: true,
                     payments: {
                         orderBy: { createdAt: 'desc' },
-                        take: 10,
+                        take: 30,
                     },
                 },
             });
@@ -32,7 +63,12 @@ export async function GET(request) {
                 return NextResponse.json({ error: 'Abonelik bulunamadı' }, { status: 404 });
             }
 
-            return NextResponse.json({ subscription });
+            return NextResponse.json({
+                subscription: {
+                    ...subscription,
+                    payments: normalizePayments(subscription.payments, 10),
+                },
+            });
         }
 
         if (email) {
@@ -42,13 +78,18 @@ export async function GET(request) {
                     plan: true,
                     payments: {
                         orderBy: { createdAt: 'desc' },
-                        take: 5,
+                        take: 30,
                     },
                 },
                 orderBy: { createdAt: 'desc' },
             });
 
-            return NextResponse.json({ subscriptions });
+            return NextResponse.json({
+                subscriptions: subscriptions.map((s) => ({
+                    ...s,
+                    payments: normalizePayments(s.payments, 10),
+                })),
+            });
         }
 
         return NextResponse.json({ error: 'id veya email parametresi gerekli' }, { status: 400 });

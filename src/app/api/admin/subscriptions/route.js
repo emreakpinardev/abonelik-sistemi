@@ -3,6 +3,37 @@ import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function normalizePayments(payments = [], limit = 3) {
+    const bucket = new Map();
+    for (const p of payments) {
+        const key = p.iyzicoPaymentId
+            ? `pid:${p.iyzicoPaymentId}`
+            : p.iyzicoPaymentTransactionId
+                ? `ptid:${p.iyzicoPaymentTransactionId}`
+                : `id:${p.id}`;
+        const arr = bucket.get(key) || [];
+        arr.push(p);
+        bucket.set(key, arr);
+    }
+
+    const deduped = [];
+    for (const arr of bucket.values()) {
+        const success = arr
+            .filter((x) => x.status === 'SUCCESS')
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        if (success.length > 0) {
+            deduped.push(success[0]);
+            continue;
+        }
+        const latest = arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        deduped.push(latest);
+    }
+
+    return deduped
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, limit);
+}
+
 /**
  * GET /api/admin/subscriptions
  * Tüm abonelikleri listele (Admin paneli için)
@@ -27,7 +58,7 @@ export async function GET(request) {
                     plan: true,
                     payments: {
                         orderBy: { createdAt: 'desc' },
-                        take: 3,
+                        take: 30,
                     },
                 },
                 orderBy: { createdAt: 'desc' },
@@ -49,7 +80,10 @@ export async function GET(request) {
         });
 
         return NextResponse.json({
-            subscriptions,
+            subscriptions: subscriptions.map((s) => ({
+                ...s,
+                payments: normalizePayments(s.payments, 3),
+            })),
             pagination: {
                 total,
                 page,

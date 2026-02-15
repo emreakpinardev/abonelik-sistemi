@@ -18,6 +18,12 @@ function normalizeText(value) {
     .replace(/ç/g, 'c')
     .replace(/ö/g, 'o')
     .replace(/ü/g, 'u')
+    .replace(/[ıİ]/g, 'i')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[üÜ]/g, 'u')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
@@ -228,6 +234,33 @@ export async function POST(request) {
             nextPaymentDate,
           },
         });
+
+        const recentFailed = await prisma.payment.findFirst({
+          where: {
+            subscriptionId,
+            status: 'FAILED',
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (recentFailed) {
+          await prisma.payment.update({
+            where: { id: recentFailed.id },
+            data: {
+              status: 'SUCCESS',
+              errorMessage: null,
+            },
+          });
+        } else {
+          await prisma.payment.create({
+            data: {
+              amount: subscription.plan.price,
+              currency: subscription.plan.currency || 'TRY',
+              status: 'SUCCESS',
+              subscriptionId,
+            },
+          });
+        }
         return redirectToResult('success', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra hesabinizdan kontrol edin.');
       }
 
@@ -287,15 +320,38 @@ export async function POST(request) {
       subscriptionResult.data?.orderReferenceCode ||
       null;
 
-    const createdPayment = await prisma.payment.create({
-      data: {
-        amount: subscription.plan.price,
-        currency: subscription.plan.currency || 'TRY',
-        status: 'SUCCESS',
-        iyzicoPaymentId: paymentId,
-        subscriptionId,
-      },
-    });
+    let createdPayment = null;
+    if (paymentId) {
+      const existingPayment = await prisma.payment.findFirst({
+        where: {
+          subscriptionId,
+          iyzicoPaymentId: String(paymentId),
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingPayment) {
+        createdPayment = await prisma.payment.update({
+          where: { id: existingPayment.id },
+          data: {
+            status: 'SUCCESS',
+            errorMessage: null,
+            iyzicoPaymentId: String(paymentId),
+          },
+        });
+      }
+    }
+
+    if (!createdPayment) {
+      createdPayment = await prisma.payment.create({
+        data: {
+          amount: subscription.plan.price,
+          currency: subscription.plan.currency || 'TRY',
+          status: 'SUCCESS',
+          iyzicoPaymentId: paymentId ? String(paymentId) : null,
+          subscriptionId,
+        },
+      });
+    }
 
     try {
       const shopifyOrder = await createShopifyOrderForSubscription(subscription, paymentId, ['abonelik', 'ilk-odeme']);

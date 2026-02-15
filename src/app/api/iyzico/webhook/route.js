@@ -136,13 +136,23 @@ export async function POST(request) {
 
       let payment = null;
       if (paymentId) {
-        payment = await prisma.payment.findFirst({
+        const existingByPaymentId = await prisma.payment.findFirst({
           where: {
             subscriptionId: subscription.id,
             iyzicoPaymentId: String(paymentId),
-            status: 'SUCCESS',
           },
+          orderBy: { createdAt: 'desc' },
         });
+        if (existingByPaymentId) {
+          payment = await prisma.payment.update({
+            where: { id: existingByPaymentId.id },
+            data: {
+              status: 'SUCCESS',
+              errorMessage: null,
+              iyzicoPaymentTransactionId: paymentTransactionId ? String(paymentTransactionId) : existingByPaymentId.iyzicoPaymentTransactionId,
+            },
+          });
+        }
       }
 
       if (!payment) {
