@@ -45,7 +45,17 @@ async function iyzicoRequest(path, body) {
         body: JSON.stringify(payload),
     });
 
-    return await response.json();
+    const raw = await response.text();
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return {
+            status: 'failure',
+            errorCode: String(response.status || ''),
+            errorMessage: 'Non-JSON response from iyzico',
+            rawResponseSnippet: raw.slice(0, 500),
+        };
+    }
 }
 
 function formatPriceForIyzico(price) {
@@ -134,6 +144,10 @@ export async function createSubscriptionPricingPlan({
     locale = 'tr',
     conversationId,
 }) {
+    if (!productReferenceCode) {
+        throw new Error('productReferenceCode gerekli');
+    }
+
     const body = {
         locale,
         conversationId: conversationId || `sub_plan_${Date.now()}`,
@@ -142,12 +156,11 @@ export async function createSubscriptionPricingPlan({
         currencyCode: currency,
         paymentInterval,
         paymentIntervalCount: Number(paymentIntervalCount) || 1,
-        productReferenceCode,
         planPaymentType: 'RECURRING',
         trialPeriodDays: Number(trialPeriodDays) || 0,
     };
 
-    return await iyzicoRequest('/v2/subscription/pricing-plans', body);
+    return await iyzicoRequest(`/v2/subscription/products/${productReferenceCode}/pricing-plans`, body);
 }
 
 /**
