@@ -64,11 +64,24 @@ async function ensureIyzicoPlanReferences(plan) {
   let pricingPlanReferenceCode = plan.iyzicoPricingPlanReferenceCode;
 
   if (!productReferenceCode) {
-    const productResult = await createSubscriptionProduct({
+    let productResult = await createSubscriptionProduct({
       name: `${plan.name}`,
       description: plan.description || `Plan ${plan.id}`,
       conversationId: `create_product_${plan.id}`,
     });
+
+    // Some merchants return "Urun zaten var." when same product name is reused.
+    // Retry once with a unique product name and keep the created reference on this plan.
+    if (
+      productResult.status !== 'success' &&
+      String(productResult.errorMessage || '').toLowerCase().includes('urun zaten var')
+    ) {
+      productResult = await createSubscriptionProduct({
+        name: `${plan.name} - ${plan.id.slice(0, 8)}-${Date.now().toString().slice(-4)}`,
+        description: plan.description || `Plan ${plan.id}`,
+        conversationId: `create_product_retry_${plan.id}`,
+      });
+    }
 
     if (productResult.status !== 'success') {
       throw new Error(productResult.errorMessage || 'iyzico product olusturulamadi');
