@@ -9,6 +9,33 @@ const ALLOWED_CITIES = [
     'Tekirdag', 'Usak', 'Yalova', 'Zonguldak'
 ];
 
+const CITY_DISTRICTS = {
+    Istanbul: ['Adalar', 'Arnavutkoy', 'Atasehir', 'Avcilar', 'Bagcilar', 'Bahcelievler', 'Bakirkoy', 'Basaksehir', 'Bayrampasa', 'Besiktas', 'Beykoz', 'Beylikduzu', 'Beyoglu', 'Buyukcekmece', 'Catalca', 'Cekmekoy', 'Esenler', 'Esenyurt', 'Eyupsultan', 'Fatih', 'Gaziosmanpasa', 'Gungoren', 'Kadikoy', 'Kagithane', 'Kartal', 'Kucukcekmece', 'Maltepe', 'Pendik', 'Sancaktepe', 'Sariyer', 'Silivri', 'Sultanbeyli', 'Sultangazi', 'Sile', 'Sisli', 'Tuzla', 'Umraniye', 'Uskudar', 'Zeytinburnu'],
+    Izmir: ['Aliaga', 'Balcova', 'Bayindir', 'Bayrakli', 'Bergama', 'Beydag', 'Bornova', 'Buca', 'Cesme', 'Cigli', 'Dikili', 'Foca', 'Gaziemir', 'Guzelbahce', 'Karabaglar', 'Karaburun', 'Karsiyaka', 'Kemalpasa', 'Kinik', 'Kiraz', 'Konak', 'Menderes', 'Menemen', 'Narlidere', 'Odemis', 'Seferihisar', 'Selcuk', 'Tire', 'Torbali', 'Urla'],
+    Ankara: ['Akyurt', 'Altindag', 'Ayas', 'Bala', 'Beypazari', 'Camlidere', 'Cankaya', 'Cubuk', 'Elmadag', 'Etimesgut', 'Evren', 'Golbasi', 'Gudul', 'Haymana', 'Kahramankazan', 'Kalecik', 'Kecioren', 'Kizilcahamam', 'Mamak', 'Nallihan', 'Polatli', 'Pursaklar', 'Sincan', 'Sereflikochisar', 'Yenimahalle'],
+    Balikesir: ['Altieylul', 'Ayvalik', 'Balya', 'Bandirma', 'Bigadic', 'Burhaniye', 'Dursunbey', 'Edremit', 'Erdek', 'Gomec', 'Gonen', 'Havran', 'Ivrindi', 'Karesi', 'Kepsut', 'Manyas', 'Marmara', 'Savastepe', 'Sindirgi', 'Susurluk'],
+    Bartin: ['Amasra', 'Kurucasile', 'Merkez', 'Ulus'],
+    Bilecik: ['Bozuyuk', 'Golpazari', 'Inhisar', 'Merkez', 'Osmaneli', 'Pazaryeri', 'Sogut', 'Yenipazar'],
+    Bolu: ['Dortdivan', 'Gerede', 'Goynuk', 'Kibriscik', 'Mengen', 'Merkez', 'Mudurnu', 'Seben', 'Yenicaga'],
+    Bursa: ['Buyukorhan', 'Gemlik', 'Gursu', 'Harmancik', 'Inegol', 'Iznik', 'Karacabey', 'Keles', 'Kestel', 'Mudanya', 'Mustafakemalpasa', 'Nilufer', 'Orhaneli', 'Orhangazi', 'Osmangazi', 'Yildirim', 'YeniSehir'],
+    Canakkale: ['Ayvacik', 'Bayramic', 'Biga', 'Bozcaada', 'Can', 'Eceabat', 'Ezine', 'Gelibolu', 'Gokceada', 'Lapseki', 'Merkez', 'Yenice'],
+    Cankiri: ['Atkaracalar', 'Bayramoren', 'Cerkes', 'Eldivan', 'Ilgaz', 'Kizilirmak', 'Korgun', 'Kursunlu', 'Merkez', 'Orta', 'Sabanozu', 'Yaprakli'],
+    Edirne: ['Enez', 'Havsa', 'Ipsala', 'Kesan', 'Lalapasa', 'Meric', 'Merkez', 'Suloglu', 'Uzunkopru'],
+    Eskisehir: ['Alpu', 'Beylikova', 'Cifteler', 'Gunyuzu', 'Han', 'Inonu', 'Mahmudiye', 'Mihalgazi', 'Mihaliccik', 'Odunpazari', 'Saricakaya', 'Seyitgazi', 'Sivrihisar', 'Tepebasi'],
+    Karabuk: ['Eflani', 'Eskipazar', 'Merkez', 'Ovacik', 'Safranbolu', 'Yenice'],
+    Kastamonu: ['Abana', 'Agli', 'Arac', 'Azdavay', 'Bozkurt', 'Cide', 'Catalzeytin', 'Daday', 'Devrekani', 'Doganyurt', 'Hanonu', 'Ihsangazi', 'Inebolu', 'Kure', 'Merkez', 'Pinarbasi', 'Seydiler', 'Senpazar', 'Taskopru', 'Tosya'],
+    Kirikkale: ['Bahsili', 'Baliseyh', 'Celebi', 'Delice', 'Karakecili', 'Keskin', 'Merkez', 'Sulakyurt', 'Yahsihan'],
+    Kirklareli: ['Babaeski', 'Demirkoy', 'Kofcaz', 'Luleburgaz', 'Merkez', 'Pehlivankoy', 'Pinarhisar', 'Vize'],
+    Kocaeli: ['Basiskele', 'Cayirova', 'Darica', 'Derince', 'Dilovasi', 'Gebze', 'Golcuk', 'Izmit', 'Kandira', 'Karamursel', 'Kartepe', 'Korfez'],
+    Kutahya: ['Altintas', 'Aslanapa', 'Cavdarhisar', 'Domanic', 'Dumlupinar', 'Emet', 'Gediz', 'Hisarcik', 'Merkez', 'Pazarlar', 'Simav', 'Saphane', 'Tavsanli'],
+    Manisa: ['Ahmetli', 'Akhisar', 'Alasehir', 'Demirci', 'Golmarmara', 'Gordes', 'Kirkagac', 'Koprubasi', 'Kula', 'Salihli', 'Sarigol', 'Saruhanli', 'Selendi', 'Soma', 'Turgutlu', 'Sehzadeler', 'Yunusemre'],
+    Sakarya: ['Adapazari', 'Akyazi', 'Arifiye', 'Erenler', 'Ferizli', 'Geyve', 'Hendek', 'Karapurcek', 'Karasu', 'Kaynarca', 'Kocaali', 'Pamukova', 'Sapanca', 'Serdivan', 'Sogutlu', 'Tarakli'],
+    Tekirdag: ['Kapakli', 'Cerkezkoy', 'Corlu', 'Ergene', 'Hayrabolu', 'Malkara', 'Marmaraereglisi', 'Muratli', 'Saray', 'Suleymanpasa', 'Sarkoy'],
+    Usak: ['Banaz', 'Esme', 'Karahalli', 'Merkez', 'Sivasli', 'Ulubey'],
+    Yalova: ['Altinova', 'Armutlu', 'Ciftlikkoy', 'Cinarcik', 'Merkez', 'Termal'],
+    Zonguldak: ['Alapli', 'Catalagzi', 'Caycuma', 'Devrek', 'Gokcebey', 'Karadenizeregli', 'Kilimli', 'Merkez'],
+};
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -251,6 +278,7 @@ export default function CheckoutPage() {
     const shippingCost = selectedRate ? parseFloat(selectedRate.price) : (shippingMethod === 'express' ? 49.90 : 0);
     const total = (subtotal + shippingCost).toFixed(2);
     const isSubscription = purchaseType === 'subscription';
+    const districtsForSelectedCity = CITY_DISTRICTS[formData.city] || [];
 
     function isTechnicalVariantLabel(label) {
         if (!label) return true;
@@ -302,7 +330,17 @@ export default function CheckoutPage() {
     }
 
     function handleInputChange(e) {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+        setFormData((prev) => {
+            const next = { ...prev, [name]: value };
+            if (name === 'city') {
+                const cityDistricts = CITY_DISTRICTS[value] || [];
+                if (!cityDistricts.includes(prev.state)) {
+                    next.state = '';
+                }
+            }
+            return next;
+        });
     }
 
     async function handleSubmit(e) {
@@ -450,7 +488,22 @@ export default function CheckoutPage() {
                                             {cities.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
-                                    <div className="co-field"><label>Ilce</label><input type="text" name="state" placeholder="Ilce" value={formData.state} onChange={handleInputChange} /></div>
+                                    <div className="co-field">
+                                        <label>Ilce <span className="req">*</span></label>
+                                        <select
+                                            name="state"
+                                            value={formData.state}
+                                            onChange={handleInputChange}
+                                            required
+                                            className="co-select"
+                                            disabled={!formData.city}
+                                        >
+                                            <option value="">{formData.city ? 'Ilce secin' : 'Once sehir secin'}</option>
+                                            {districtsForSelectedCity.map((d) => (
+                                                <option key={d} value={d}>{d}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                     <div className="co-field co-field-sm"><label>Posta Kodu</label><input type="text" name="zipCode" placeholder="34000" value={formData.zipCode} onChange={handleInputChange} /></div>
                                 </div>
                                 <div className="co-field"><label>Adres <span className="req">*</span></label><textarea name="address" placeholder="Acik teslimat adresinizi girin..." rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required /></div>
