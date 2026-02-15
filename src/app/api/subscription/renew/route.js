@@ -14,12 +14,17 @@ export async function GET(request) {
     try {
         // Cron job güvenliği
         const authHeader = request.headers.get('authorization');
-        if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-            // Vercel cron header kontrolü
-            const isVercelCron = request.headers.get('x-vercel-cron');
-            if (!isVercelCron) {
-                return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
-            }
+        const cronSecret = process.env.CRON_SECRET;
+        const requestUrl = new URL(request.url);
+        const manualSecret = requestUrl.searchParams.get('secret');
+        const isBearerAuthorized = Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+        const isManualAuthorized = Boolean(cronSecret) && manualSecret === cronSecret;
+
+        // Vercel cron header kontrolü
+        const isVercelCron = request.headers.get('x-vercel-cron');
+
+        if (!isBearerAuthorized && !isVercelCron && !isManualAuthorized) {
+            return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 });
         }
 
         const today = new Date();
