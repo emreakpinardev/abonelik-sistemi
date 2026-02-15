@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -36,7 +36,7 @@ function PortalContent() {
                 setNoSub(true);
             }
         } catch (err) {
-            setMsg({ type: 'error', text: 'Bağlantı hatası: ' + err.message });
+            setMsg({ type: 'error', text: 'BaÄŸlantÄ± hatasÄ±: ' + err.message });
         }
         setLoading(false);
     }
@@ -50,7 +50,7 @@ function PortalContent() {
             });
             const data = await res.json();
             if (data.success) {
-                setMsg({ type: 'success', text: 'Teslimat sıklığı güncellendi!' });
+                setMsg({ type: 'success', text: 'Teslimat sÄ±klÄ±ÄŸÄ± gÃ¼ncellendi!' });
                 fetchSubscriptions(email);
             } else {
                 setMsg({ type: 'error', text: 'Hata: ' + data.error });
@@ -61,7 +61,7 @@ function PortalContent() {
     }
 
     async function handleCancel(subId) {
-        if (!confirm('Aboneliğinizi iptal etmek istediğinize emin misiniz?')) return;
+        if (!confirm('AboneliÄŸinizi iptal etmek istediÄŸinize emin misiniz?')) return;
         try {
             const res = await fetch('/api/subscription/cancel', {
                 method: 'POST',
@@ -81,7 +81,7 @@ function PortalContent() {
     }
 
     async function handleUpdatePayment(subId) {
-        setMsg({ type: 'info', text: 'Ödeme sayfasına yönlendiriliyorsunuz...' });
+        setMsg({ type: 'info', text: 'Kart guncelleme sayfasina yonlendiriliyorsunuz...' });
         try {
             const res = await fetch('/api/subscription/update-payment', {
                 method: 'POST',
@@ -89,14 +89,24 @@ function PortalContent() {
                 body: JSON.stringify({ subscriptionId: subId, email }),
             });
             const data = await res.json();
+
+            if (data.requiresExternalCardUpdate && data.paymentPageUrl) {
+                window.open(data.paymentPageUrl, '_blank', 'noopener,noreferrer');
+                setMsg({
+                    type: 'info',
+                    text: data.message || 'Bu abonelik icin kart guncelleme iyzico musteri panelinden yapilir. Yeni sekmede panel acildi.',
+                });
+                return;
+            }
+
             if (data.paymentPageUrl) {
-                window.open(data.paymentPageUrl, '_blank');
-                setMsg({ type: 'success', text: 'Ödeme sayfası yeni sekmede açıldı. 1 TL doğrulama ücreti alınıp otomatik iade edilecektir.' });
+                window.open(data.paymentPageUrl, '_blank', 'noopener,noreferrer');
+                setMsg({ type: 'success', text: 'Odeme sayfasi yeni sekmede acildi. 1 TL dogrulama ucreti alinir ve otomatik iade edilir.' });
             } else {
-                setMsg({ type: 'error', text: data.error || 'Ödeme güncellemesi başarısız.' });
+                setMsg({ type: 'error', text: data.error || data.message || 'Odeme guncellemesi basarisiz.' });
             }
         } catch (err) {
-            setMsg({ type: 'error', text: 'Bağlantı hatası: ' + err.message });
+            setMsg({ type: 'error', text: 'Baglanti hatasi: ' + err.message });
         }
     }
 
@@ -107,7 +117,7 @@ function PortalContent() {
                 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
                 <div style={st.loadingBox}>
                     <span className="material-icons-outlined" style={{ fontSize: 48, color: '#16a34a', animation: 'spin 1s linear infinite' }}>autorenew</span>
-                    <p style={{ color: '#6b7280', marginTop: 12, fontSize: 14 }}>Abonelikleriniz yükleniyor...</p>
+                    <p style={{ color: '#6b7280', marginTop: 12, fontSize: 14 }}>Abonelikleriniz yÃ¼kleniyor...</p>
                 </div>
                 <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
@@ -122,16 +132,16 @@ function PortalContent() {
                 <div style={st.container}>
                     <div style={st.emptyCard}>
                         <span className="material-icons-outlined" style={{ fontSize: 56, color: '#d1d5db', marginBottom: 12 }}>inventory_2</span>
-                        <h2 style={st.emptyTitle}>Abonelik Bulunamadı</h2>
+                        <h2 style={st.emptyTitle}>Abonelik BulunamadÄ±</h2>
                         <p style={st.emptyDesc}>
                             {emailFromUrl
-                                ? 'Bu hesaba ait aktif bir abonelik bulunamadı.'
-                                : 'Abonelik bilgilerinizi görüntülemek için lütfen hesabınıza giriş yapın.'}
+                                ? 'Bu hesaba ait aktif bir abonelik bulunamadÄ±.'
+                                : 'Abonelik bilgilerinizi gÃ¶rÃ¼ntÃ¼lemek iÃ§in lÃ¼tfen hesabÄ±nÄ±za giriÅŸ yapÄ±n.'}
                         </p>
                         {!emailFromUrl && (
                             <a href="/account/login" style={st.btnGreen}>
                                 <span className="material-icons-outlined" style={{ fontSize: 18, marginRight: 6, verticalAlign: 'middle' }}>login</span>
-                                Giriş Yap
+                                GiriÅŸ Yap
                             </a>
                         )}
                     </div>
@@ -155,9 +165,9 @@ function PortalContent() {
                 {/* Tabs */}
                 <div style={st.tabs}>
                     <TabBtn active={activeTab === 'overview'} icon="local_shipping" label="Abonelikler" onClick={() => setActiveTab('overview')} />
-                    <TabBtn active={activeTab === 'payments'} icon="receipt_long" label="Ödeme Geçmişi" onClick={() => setActiveTab('payments')} />
+                    <TabBtn active={activeTab === 'payments'} icon="receipt_long" label="Ã–deme GeÃ§miÅŸi" onClick={() => setActiveTab('payments')} />
                     <TabBtn active={activeTab === 'invoices'} icon="description" label="Faturalar" onClick={() => setActiveTab('invoices')} />
-                    <TabBtn active={activeTab === 'settings'} icon="credit_card" label="Kart Ayarları" onClick={() => setActiveTab('settings')} />
+                    <TabBtn active={activeTab === 'settings'} icon="credit_card" label="Kart AyarlarÄ±" onClick={() => setActiveTab('settings')} />
                 </div>
 
                 {/* ===== TAB: Overview ===== */}
@@ -167,7 +177,7 @@ function PortalContent() {
                         {activeSubs.map(sub => (
                             <SubCard key={sub.id} sub={sub} onUpdateFreq={handleUpdateFreq} onCancel={handleCancel} onUpdatePayment={handleUpdatePayment} />
                         ))}
-                        {otherSubs.length > 0 && <SectionLabel text="Geçmiş Abonelikler" style={{ marginTop: 28 }} />}
+                        {otherSubs.length > 0 && <SectionLabel text="GeÃ§miÅŸ Abonelikler" style={{ marginTop: 28 }} />}
                         {otherSubs.map(sub => <SubCard key={sub.id} sub={sub} />)}
                     </>
                 )}
@@ -177,7 +187,7 @@ function PortalContent() {
                     <div style={st.card}>
                         <div style={st.cardTitleRow}>
                             <span className="material-icons-outlined" style={{ fontSize: 20, color: '#16a34a', marginRight: 8 }}>receipt_long</span>
-                            <h3 style={st.cardTitleText}>Ödeme Geçmişi</h3>
+                            <h3 style={st.cardTitleText}>Ã–deme GeÃ§miÅŸi</h3>
                         </div>
                         {allPayments.length > 0 ? (
                             <div style={{ overflowX: 'auto' }}>
@@ -195,9 +205,9 @@ function PortalContent() {
                                             <tr key={p.id} style={st.tr}>
                                                 <td style={st.td}>{formatDate(p.createdAt)}</td>
                                                 <td style={st.td}>{p.planName || '-'}</td>
-                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} ₺</td>
+                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} â‚º</td>
                                                 <td style={st.td}>
-                                                    <StatusBadge success={p.status === 'SUCCESS'} label={p.status === 'SUCCESS' ? 'Başarılı' : 'Başarısız'} />
+                                                    <StatusBadge success={p.status === 'SUCCESS'} label={p.status === 'SUCCESS' ? 'BaÅŸarÄ±lÄ±' : 'BaÅŸarÄ±sÄ±z'} />
                                                 </td>
                                             </tr>
                                         ))}
@@ -205,7 +215,7 @@ function PortalContent() {
                                 </table>
                             </div>
                         ) : (
-                            <EmptyState icon="payments" text="Henüz ödeme kaydı bulunmuyor." />
+                            <EmptyState icon="payments" text="HenÃ¼z Ã¶deme kaydÄ± bulunmuyor." />
                         )}
                     </div>
                 )}
@@ -215,7 +225,7 @@ function PortalContent() {
                     <div style={st.card}>
                         <div style={st.cardTitleRow}>
                             <span className="material-icons-outlined" style={{ fontSize: 20, color: '#16a34a', marginRight: 8 }}>description</span>
-                            <h3 style={st.cardTitleText}>Faturalarım</h3>
+                            <h3 style={st.cardTitleText}>FaturalarÄ±m</h3>
                         </div>
                         {allPayments.filter(p => p.status === 'SUCCESS').length > 0 ? (
                             <div style={{ overflowX: 'auto' }}>
@@ -235,11 +245,11 @@ function PortalContent() {
                                                 <td style={{ ...st.td, fontWeight: 500 }}>INV-{String(allPayments.filter(x => x.status === 'SUCCESS').length - i).padStart(4, '0')}</td>
                                                 <td style={st.td}>{formatDate(p.createdAt)}</td>
                                                 <td style={st.td}>{p.planName || '-'}</td>
-                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} ₺</td>
+                                                <td style={{ ...st.td, fontWeight: 600 }}>{p.amount} â‚º</td>
                                                 <td style={st.td}>
                                                     <button onClick={() => handleDownloadInvoice(p, allPayments.filter(x => x.status === 'SUCCESS').length - i)} style={st.btnSmall}>
                                                         <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>download</span>
-                                                        İndir
+                                                        Ä°ndir
                                                     </button>
                                                 </td>
                                             </tr>
@@ -248,7 +258,7 @@ function PortalContent() {
                                 </table>
                             </div>
                         ) : (
-                            <EmptyState icon="description" text="Henüz fatura bulunmuyor." />
+                            <EmptyState icon="description" text="HenÃ¼z fatura bulunmuyor." />
                         )}
                     </div>
                 )}
@@ -258,10 +268,10 @@ function PortalContent() {
                     <div style={st.card}>
                         <div style={st.cardTitleRow}>
                             <span className="material-icons-outlined" style={{ fontSize: 20, color: '#16a34a', marginRight: 8 }}>credit_card</span>
-                            <h3 style={st.cardTitleText}>Ödeme Yöntemi</h3>
+                            <h3 style={st.cardTitleText}>Ã–deme YÃ¶ntemi</h3>
                         </div>
                         <p style={st.settingsDesc}>
-                            Kayıtlı kart bilgilerinizi güncelleyebilirsiniz. Güncelleme sırasında 1 ₺ doğrulama ücreti alınır ve <strong>otomatik olarak iade edilir</strong>.
+                            KayÄ±tlÄ± kart bilgilerinizi gÃ¼ncelleyebilirsiniz. GÃ¼ncelleme sÄ±rasÄ±nda 1 â‚º doÄŸrulama Ã¼creti alÄ±nÄ±r ve <strong>otomatik olarak iade edilir</strong>.
                         </p>
                         {activeSubs.map(sub => (
                             <div key={sub.id} style={st.paymentRow}>
@@ -269,17 +279,19 @@ function PortalContent() {
                                     <span className="material-icons-outlined" style={{ fontSize: 28, color: '#6b7280' }}>credit_card</span>
                                     <div>
                                         <div style={st.paymentName}>{sub.plan?.name || 'Abonelik'}</div>
-                                        <div style={st.paymentPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</div>
+                                        <div style={st.paymentPrice}>{sub.plan?.price} â‚º / {getFreqLabel(sub.plan)}</div>
                                     </div>
                                 </div>
                                 <button onClick={() => handleUpdatePayment(sub.id)} style={st.btnOutline}>
-                                    <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>sync</span>
-                                    Kartı Güncelle
+                                    <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>
+                                        {sub.iyzicoSubscriptionRef ? 'open_in_new' : 'sync'}
+                                    </span>
+                                    {sub.iyzicoSubscriptionRef ? 'iyzico Kart Paneli' : 'Kart Guncelle'}
                                 </button>
                             </div>
                         ))}
                         {activeSubs.length === 0 && (
-                            <EmptyState icon="credit_card_off" text="Aktif aboneliğiniz bulunmuyor." />
+                            <EmptyState icon="credit_card_off" text="Aktif aboneliÄŸiniz bulunmuyor." />
                         )}
                     </div>
                 )}
@@ -311,14 +323,14 @@ td{padding:12px;border-bottom:1px solid #f3f4f6;font-size:14px}
 @media print{body{padding:20px}}
 </style></head><body>
 <div class="header">
-<div><div class="logo">Skycrops</div><div style="color:#6b7280;font-size:13px;margin-top:4px">Abonelik Faturası</div></div>
+<div><div class="logo">Skycrops</div><div style="color:#6b7280;font-size:13px;margin-top:4px">Abonelik FaturasÄ±</div></div>
 <div class="meta"><div class="invoice-label">${invoiceNo}</div>Tarih: ${date}</div>
 </div>
-<div class="section"><div class="section-title">Ödeme Detayları</div></div>
-<table><thead><tr><th>Açıklama</th><th>Tutar</th></tr></thead>
-<tbody><tr><td>${payment.planName || 'Abonelik'}</td><td>${payment.amount} ₺</td></tr>
-<tr class="total-row"><td>Toplam</td><td>${payment.amount} ₺</td></tr></tbody></table>
-<div class="footer">Bu belge elektronik olarak oluşturulmuştur. • Skycrops Abonelik Sistemi</div>
+<div class="section"><div class="section-title">Ã–deme DetaylarÄ±</div></div>
+<table><thead><tr><th>AÃ§Ä±klama</th><th>Tutar</th></tr></thead>
+<tbody><tr><td>${payment.planName || 'Abonelik'}</td><td>${payment.amount} â‚º</td></tr>
+<tr class="total-row"><td>Toplam</td><td>${payment.amount} â‚º</td></tr></tbody></table>
+<div class="footer">Bu belge elektronik olarak oluÅŸturulmuÅŸtur. â€¢ Skycrops Abonelik Sistemi</div>
 </body></html>`;
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
@@ -351,17 +363,17 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                     </span>
                     <div>
                         <h3 style={st.subName}>{sub.plan?.name || 'Abonelik'}</h3>
-                        <span style={st.subPrice}>{sub.plan?.price} ₺ / {getFreqLabel(sub.plan)}</span>
+                        <span style={st.subPrice}>{sub.plan?.price} â‚º / {getFreqLabel(sub.plan)}</span>
                     </div>
                 </div>
                 <Badge status={sub.status} />
             </div>
 
             <div style={st.infoGrid}>
-                <InfoItem icon="event" label="Sonraki Ödeme" value={formatDate(sub.nextPaymentDate)} />
-                <InfoItem icon="today" label="Başlangıç" value={formatDate(sub.startDate)} />
-                <InfoItem icon="date_range" label="Dönem Sonu" value={formatDate(sub.currentPeriodEnd)} />
-                <InfoItem icon="info" label="Durum" value={isActive ? 'Aktif' : sub.status === 'CANCELLED' ? 'İptal Edildi' : sub.status} />
+                <InfoItem icon="event" label="Sonraki Ã–deme" value={formatDate(sub.nextPaymentDate)} />
+                <InfoItem icon="today" label="BaÅŸlangÄ±Ã§" value={formatDate(sub.startDate)} />
+                <InfoItem icon="date_range" label="DÃ¶nem Sonu" value={formatDate(sub.currentPeriodEnd)} />
+                <InfoItem icon="info" label="Durum" value={isActive ? 'Aktif' : sub.status === 'CANCELLED' ? 'Ä°ptal Edildi' : sub.status} />
             </div>
 
             {isActive && onUpdateFreq && (
@@ -370,7 +382,7 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                         <div style={{ flex: 1 }}>
                             <label style={st.freqLabel}>
                                 <span className="material-icons-outlined" style={{ fontSize: 16, verticalAlign: 'middle', marginRight: 4 }}>schedule</span>
-                                Teslimat Sıklığı
+                                Teslimat SÄ±klÄ±ÄŸÄ±
                             </label>
                             <select style={st.select} defaultValue={getFreqValue(sub.plan)} onChange={(e) => onUpdateFreq(sub.id, e.target.value)}>
                                 <option value="1_minute">Dakikada bir</option>
@@ -389,13 +401,15 @@ function SubCard({ sub, onUpdateFreq, onCancel, onUpdatePayment }) {
                     <div style={st.btnRow}>
                         {onUpdatePayment && (
                             <button onClick={() => onUpdatePayment(sub.id)} style={st.btnOutline}>
-                                <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>credit_card</span>
-                                Kart Güncelle
+                                <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>
+                                    {sub.iyzicoSubscriptionRef ? 'open_in_new' : 'credit_card'}
+                                </span>
+                                {sub.iyzicoSubscriptionRef ? 'iyzico Kart Paneli' : 'Kart Guncelle'}
                             </button>
                         )}
                         <button onClick={() => onCancel(sub.id)} style={st.btnDanger}>
                             <span className="material-icons-outlined" style={{ fontSize: 16, marginRight: 4, verticalAlign: 'middle' }}>cancel</span>
-                            İptal Et
+                            Ä°ptal Et
                         </button>
                     </div>
                 </div>
@@ -419,7 +433,7 @@ function InfoItem({ icon, label, value }) {
 function Badge({ status }) {
     const map = {
         ACTIVE: { bg: '#dcfce7', color: '#166534', icon: 'check_circle', label: 'Aktif' },
-        CANCELLED: { bg: '#fee2e2', color: '#991b1b', icon: 'cancel', label: 'İptal' },
+        CANCELLED: { bg: '#fee2e2', color: '#991b1b', icon: 'cancel', label: 'Ä°ptal' },
         PAUSED: { bg: '#fef3c7', color: '#92400e', icon: 'pause_circle', label: 'Durduruldu' },
     };
     const c = map[status] || { bg: '#f1f5f9', color: '#475569', icon: 'help', label: status };
@@ -486,14 +500,14 @@ function getFreqLabel(plan) {
         '5_minute': '5 Dakika',
         '10_minute': '10 Dakika',
         '30_minute': '30 Dakika',
-        '1_week': 'Haftalık',
+        '1_week': 'HaftalÄ±k',
         '2_week': '2 Hafta',
         '3_week': '3 Hafta',
-        '1_month': 'Aylık',
+        '1_month': 'AylÄ±k',
         '2_month': '2 Ay',
         '3_month': '3 Ay'
     };
-    return map[getFreqValue(plan)] || 'Aylık';
+    return map[getFreqValue(plan)] || 'AylÄ±k';
 }
 
 // ===== STYLES =====
@@ -554,8 +568,9 @@ const st = {
 
 export default function CustomerPortalPage() {
     return (
-        <Suspense fallback={<div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Yükleniyor...</div>}>
+        <Suspense fallback={<div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>YÃ¼kleniyor...</div>}>
             <PortalContent />
         </Suspense>
     );
 }
+

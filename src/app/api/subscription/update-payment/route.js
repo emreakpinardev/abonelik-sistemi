@@ -1,9 +1,19 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { initializeCheckoutForm } from '@/lib/iyzico';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
+
+function getIyzicoCustomerPanelUrl() {
+    return (
+        process.env.IYZICO_CUSTOMER_PANEL_URL ||
+        process.env.NEXT_PUBLIC_IYZICO_CUSTOMER_PANEL_URL ||
+        process.env.IYZICO_CUSTOMER_PORTAL_URL ||
+        process.env.NEXT_PUBLIC_IYZICO_CUSTOMER_PORTAL_URL ||
+        'https://www.iyzico.com/'
+    );
+}
 
 /**
  * POST /api/subscription/update-payment
@@ -35,10 +45,12 @@ export async function POST(request) {
         }
 
         if (subscription.iyzicoSubscriptionRef) {
-            return NextResponse.json(
-                { error: 'Bu abonelik iyzico Subscription API ile yonetiliyor. Kart guncelleme icin iyzico musterı panelini kullanin.' },
-                { status: 400 }
-            );
+            return NextResponse.json({
+                success: false,
+                requiresExternalCardUpdate: true,
+                paymentPageUrl: getIyzicoCustomerPanelUrl(),
+                message: 'Bu abonelik iyzico Subscription API ile yonetiliyor. Kart guncelleme islemini iyzico musteri panelinden tamamlayin.',
+            });
         }
 
         const plan = subscription.plan;
@@ -109,3 +121,4 @@ export async function POST(request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
