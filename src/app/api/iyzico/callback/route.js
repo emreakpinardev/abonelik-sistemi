@@ -12,6 +12,12 @@ export const dynamic = 'force-dynamic';
 function normalizeText(value) {
   return String(value || '')
     .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ç/g, 'c')
+    .replace(/ö/g, 'o')
+    .replace(/ü/g, 'u')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
