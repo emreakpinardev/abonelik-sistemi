@@ -295,11 +295,17 @@ export async function POST(request) {
       });
 
       if (subscriptionResult.status === 'success') {
+        const token = subscriptionResult.token;
+        const paymentPageUrl =
+          subscriptionResult.checkoutFormPageUrl ||
+          subscriptionResult.paymentPageUrl ||
+          (token ? `https://cpp.iyzipay.com?token=${encodeURIComponent(token)}&lang=tr` : null);
+
         return NextResponse.json({
           success: true,
           checkoutFormContent: subscriptionResult.checkoutFormContent,
-          paymentPageUrl: subscriptionResult.checkoutFormPageUrl || subscriptionResult.paymentPageUrl,
-          token: subscriptionResult.token,
+          paymentPageUrl,
+          token,
         });
       }
 

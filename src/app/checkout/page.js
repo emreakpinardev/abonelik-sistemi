@@ -405,9 +405,15 @@ export default function CheckoutPage() {
                 setSubmitting(false);
                 return;
             }
-            if (data.success && data.paymentPageUrl) {
-                // iyzico odeme sayfasina yonlendir
-                window.location.href = data.paymentPageUrl;
+            if (data.success) {
+                const redirectUrl = data.paymentPageUrl || (data.token ? `https://cpp.iyzipay.com?token=${encodeURIComponent(data.token)}&lang=tr` : '');
+                if (redirectUrl) {
+                    // iyzico odeme sayfasina yonlendir
+                    window.location.href = redirectUrl;
+                    return;
+                }
+                alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: Odeme URL'i olusturulamadi`);
+                setSubmitting(false);
             } else {
                 alert(`Hata: ${data.error || 'Bilinmeyen hata'}\nDetay: ${data.details || ''}`);
                 setSubmitting(false);
