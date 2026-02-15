@@ -18,7 +18,12 @@ function normalizeText(value) {
 
 function isSystemLevelIyzicoError(message) {
   const m = normalizeText(message);
-  return m.includes('sistem hatasi') || m.includes('system error');
+  return (
+    m.includes('sistem hatasi') ||
+    m.includes('system error') ||
+    m.includes('internal server error') ||
+    m.includes('gecici')
+  );
 }
 
 function sleep(ms) {
@@ -206,7 +211,7 @@ export async function POST(request) {
           where: { id: subscriptionId },
           data: { status: 'PENDING' },
         });
-        return redirectToResult('error', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra tekrar kontrol edin.');
+        return redirectToResult('success', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra hesabinizdan kontrol edin.');
       }
 
       await prisma.subscription.update({

@@ -4,6 +4,12 @@ import { createOrder } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
 
+function extractSubscriptionIdFromAnyText(value) {
+  const text = String(value || '');
+  const match = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  return match ? match[0] : null;
+}
+
 function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   const next = new Date(fromDate);
 
@@ -76,17 +82,46 @@ export async function POST(request) {
     const subscriptionReferenceCode =
       payload.subscriptionReferenceCode ||
       body.iyziReferenceCode ||
+      body.subscriptionReferenceCode ||
       payload.referenceCode ||
+      body.referenceCode ||
       null;
 
-    if (!subscriptionReferenceCode) {
-      return NextResponse.json({ received: true, skipped: true, reason: 'subscription reference missing' });
+    let subscription = null;
+
+    if (subscriptionReferenceCode) {
+      subscription = await prisma.subscription.findFirst({
+        where: { iyzicoSubscriptionRef: subscriptionReferenceCode },
+        include: { plan: true },
+      });
     }
 
-    const subscription = await prisma.subscription.findFirst({
-      where: { iyzicoSubscriptionRef: subscriptionReferenceCode },
-      include: { plan: true },
-    });
+    // Fallback: match by conversationId/internal references when iyzico ref was not saved yet.
+    if (!subscription) {
+      const conversationCandidates = [
+        payload.conversationId,
+        body.conversationId,
+        payload.referenceCode,
+        body.referenceCode,
+        payload.subscriptionReferenceCode,
+        body.subscriptionReferenceCode,
+        payload.iyziReferenceCode,
+        body.iyziReferenceCode,
+      ];
+
+      let inferredSubscriptionId = null;
+      for (const candidate of conversationCandidates) {
+        inferredSubscriptionId = extractSubscriptionIdFromAnyText(candidate);
+        if (inferredSubscriptionId) break;
+      }
+
+      if (inferredSubscriptionId) {
+        subscription = await prisma.subscription.findUnique({
+          where: { id: inferredSubscriptionId },
+          include: { plan: true },
+        });
+      }
+    }
 
     if (!subscription) {
       return NextResponse.json({ received: true, skipped: true, reason: 'subscription not found' });
@@ -127,6 +162,7 @@ export async function POST(request) {
         where: { id: subscription.id },
         data: {
           status: 'ACTIVE',
+          ...(subscriptionReferenceCode ? { iyzicoSubscriptionRef: subscriptionReferenceCode } : {}),
           currentPeriodStart: now,
           currentPeriodEnd: nextPaymentDate,
           nextPaymentDate,
