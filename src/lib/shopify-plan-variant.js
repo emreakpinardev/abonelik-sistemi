@@ -1,4 +1,4 @@
-import { getProduct, shopifyREST } from '@/lib/shopify';
+﻿import { getProduct, shopifyREST } from '@/lib/shopify';
 
 function toPriceString(value) {
   const n = Number(value);
@@ -24,7 +24,12 @@ function buildOptionValue({ interval, intervalCount }) {
 }
 
 function buildLegacyOptionValue({ interval, intervalCount }) {
-  return `Subscription ${intervalCount} ${String(interval).toLowerCase()}`;
+  const count = Math.max(1, Number(intervalCount) || 1);
+  const normalizedInterval = String(interval || 'MONTHLY').toUpperCase();
+  if (normalizedInterval === 'WEEKLY') return `${count} haftada bir`;
+  if (normalizedInterval === 'MINUTELY') return `${count} dakikada bir`;
+  if (normalizedInterval === 'YEARLY') return `${count} yılda bir`;
+  return `${count} ayda bir`;
 }
 
 function normalizeText(value) {
@@ -98,7 +103,11 @@ export async function ensurePlanVariant({
   const allVariants = [...variants, ...extraVariants];
   const matched = findMatchingVariant(allVariants, { sku, optionValues });
   if (matched) {
-    if (String(matched.price) !== normalizedPrice || String(matched.sku || '') !== sku) {
+    if (
+      String(matched.price) !== normalizedPrice ||
+      String(matched.sku || '') !== sku ||
+      String(matched.option1 || '') !== optionValue
+    ) {
       await shopifyREST(`/variants/${matched.id}.json`, 'PUT', {
         variant: {
           id: matched.id,
@@ -170,3 +179,4 @@ export async function ensurePlanVariant({
     return String(existing.id);
   }
 }
+
