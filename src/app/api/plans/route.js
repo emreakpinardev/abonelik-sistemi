@@ -153,9 +153,14 @@ export async function POST(request) {
                 });
                 const updated = await prisma.plan.update({
                     where: { id: existing.id },
-                    data: { shopifyVariantId: ensuredVariantId ? String(ensuredVariantId) : null },
+                    data: {
+                        ...(name !== undefined ? { name } : {}),
+                        ...(description !== undefined ? { description } : {}),
+                        ...(price !== undefined ? { price: parseFloat(price) } : {}),
+                        shopifyVariantId: ensuredVariantId ? String(ensuredVariantId) : null
+                    },
                 });
-                return NextResponse.json({ success: true, plan: updated, message: 'Plan zaten mevcut (variant guncellendi)' });
+                return NextResponse.json({ success: true, plan: updated, message: 'Plan zaten mevcut (fiyat/variant guncellendi)' });
             }
         }
 
@@ -213,6 +218,29 @@ export async function PUT(request) {
         if (shopifyProductId !== undefined) data.shopifyProductId = shopifyProductId;
         if (shopifyVariantId !== undefined) data.shopifyVariantId = shopifyVariantId;
         if (active !== undefined) data.active = active;
+
+        // Fiyat/periyot degisirse Shopify plan varyantini da senkronize et
+        const current = await prisma.plan.findUnique({ where: { id } });
+        if (!current) {
+            return NextResponse.json({ error: 'Plan bulunamadi' }, { status: 404 });
+        }
+
+        const nextShopifyProductId = data.shopifyProductId ?? current.shopifyProductId;
+        const nextIsTemplate = current.isTemplate;
+        if (nextShopifyProductId && !nextIsTemplate) {
+            const nextPrice = data.price ?? current.price;
+            const nextInterval = data.interval ?? current.interval;
+            const nextIntervalCount = data.intervalCount ?? current.intervalCount;
+            const nextExistingVariantId = data.shopifyVariantId ?? current.shopifyVariantId ?? null;
+            const ensuredVariantId = await ensurePlanVariant({
+                productId: nextShopifyProductId,
+                price: nextPrice,
+                interval: nextInterval,
+                intervalCount: nextIntervalCount,
+                existingVariantId: nextExistingVariantId ? String(nextExistingVariantId) : null,
+            });
+            data.shopifyVariantId = ensuredVariantId ? String(ensuredVariantId) : null;
+        }
 
         const plan = await prisma.plan.update({
             where: { id },

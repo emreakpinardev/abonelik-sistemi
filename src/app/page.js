@@ -23,6 +23,7 @@ export default function AdminDashboard() {
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState([]); // Multi select for assignment
+  const [priceDrafts, setPriceDrafts] = useState({});
 
   // Forms
   const [newTemplateForm, setNewTemplateForm] = useState({
@@ -238,6 +239,28 @@ export default function AdminDashboard() {
     } catch (err) { alert(err.message); }
   }
 
+  async function handleUpdatePlanPrice(planId) {
+    const raw = priceDrafts[planId];
+    if (raw === undefined || raw === null || raw === '') return alert('Fiyat girin');
+    const price = Number(raw);
+    if (!Number.isFinite(price) || price < 0) return alert('Gecerli bir fiyat girin');
+    try {
+      const res = await fetch('/api/plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: planId, price }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Fiyat guncellenemedi');
+      }
+      await fetchPlans();
+      alert('Plan fiyati guncellendi.');
+    } catch (err) {
+      alert('Hata: ' + err.message);
+    }
+  }
+
   async function handleCancelSubscription(id) {
     if (!confirm('Aboneliği iptal etmek istediğinize emin misiniz?')) return;
     try {
@@ -434,7 +457,24 @@ export default function AdminDashboard() {
                           <tr key={p.id}>
                             <td style={st.td}>{prod?.title || p.shopifyProductId}</td>
                             <td style={st.td}>{p.name} <span style={{ color: '#999', fontSize: 11 }}>({intervalLabel(p.interval, p.intervalCount)})</span></td>
-                            <td style={st.td}>{p.price} TL</td>
+                            <td style={st.td}>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={priceDrafts[p.id] ?? p.price}
+                                  onChange={(e) => setPriceDrafts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  style={{ width: 95, padding: '4px 6px', border: '1px solid #ddd', borderRadius: 4 }}
+                                />
+                                <button
+                                  onClick={() => handleUpdatePlanPrice(p.id)}
+                                  style={{ border: '1px solid #16a34a', color: '#16a34a', background: '#fff', borderRadius: 4, padding: '4px 8px', cursor: 'pointer' }}
+                                >
+                                  Kaydet
+                                </button>
+                              </div>
+                            </td>
                             <td style={st.td}><button onClick={() => handleDeletePlan(p.id)} style={{ color: 'red', border: 'none', background: 'none' }}>Sil</button></td>
                           </tr>
                         );
