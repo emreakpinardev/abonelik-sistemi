@@ -76,6 +76,42 @@ function decodeCartPayload(cartParam) {
     }
 }
 
+function sanitizeCartData(rawData) {
+    if (!rawData || typeof rawData !== 'object') return rawData;
+    const safeItems = Array.isArray(rawData.items)
+        ? rawData.items.map((item) => {
+            const safeItem = { ...(item || {}) };
+            if (safeItem.name) safeItem.name = repairMojibake(safeItem.name);
+            if (safeItem.variant) safeItem.variant = repairMojibake(safeItem.variant);
+            if (safeItem.variant_title) safeItem.variant_title = repairMojibake(safeItem.variant_title);
+            if (safeItem.vendor) safeItem.vendor = repairMojibake(safeItem.vendor);
+            if (safeItem.selling_plan?.name) {
+                safeItem.selling_plan = {
+                    ...safeItem.selling_plan,
+                    name: repairMojibake(safeItem.selling_plan.name),
+                };
+            }
+            if (safeItem.selling_plan_allocation?.selling_plan?.name) {
+                safeItem.selling_plan_allocation = {
+                    ...safeItem.selling_plan_allocation,
+                    selling_plan: {
+                        ...safeItem.selling_plan_allocation.selling_plan,
+                        name: repairMojibake(safeItem.selling_plan_allocation.selling_plan.name),
+                    },
+                };
+            }
+            return safeItem;
+        })
+        : [];
+
+    return {
+        ...rawData,
+        items: safeItems,
+        subscription_frequency_label: repairMojibake(rawData.subscription_frequency_label || ''),
+        productName: repairMojibake(rawData.productName || ''),
+    };
+}
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -221,7 +257,7 @@ export default function CheckoutPage() {
         if (cartParam) {
             // Base64 encoded cart data (from Shopify redirects)
             try {
-                const decoded = decodeCartPayload(cartParam);
+                const decoded = sanitizeCartData(decodeCartPayload(cartParam));
                 if (!decoded) throw new Error('Cart payload decode failed');
                 setCartData(decoded);
                 const inferredSubscription = detectSubscriptionFromItems(decoded.items || []);
@@ -279,16 +315,16 @@ export default function CheckoutPage() {
             if (type) setPurchaseType(type);
             if (directPlanId) setPlanId(directPlanId);
             if (subFreq || subFreqLabel) {
-                const normalized = normalizeFrequencyInput(subFreq || '', subFreqLabel || '');
+                const normalized = normalizeFrequencyInput(subFreq || '', repairMojibake(subFreqLabel || ''));
                 if (normalized.frequency) setSubscriptionFrequency(normalized.frequency);
                 if (normalized.label) setSubscriptionFrequencyLabel(normalized.label);
             }
 
             if (productId || productName) {
-                setCartData({
+                setCartData(sanitizeCartData({
                     items: [{
                         id: productId || '',
-                        name: productName || 'Urun',
+                        name: repairMojibake(productName || 'Urun'),
                         price: parseFloat(productPrice) || 0,
                         quantity: 1,
                         variant_id: variantId || '',
@@ -296,9 +332,9 @@ export default function CheckoutPage() {
                     total: productPrice || '0',
                     purchase_type: type || 'single',
                     subscription_frequency: subFreq || '',
-                    subscription_frequency_label: subFreqLabel || '',
+                    subscription_frequency_label: repairMojibake(subFreqLabel || ''),
                     plan_id: directPlanId || '',
-                });
+                }));
             }
         }
         setLoading(false);
