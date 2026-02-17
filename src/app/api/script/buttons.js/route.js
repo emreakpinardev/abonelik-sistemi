@@ -155,6 +155,68 @@ export async function GET() {
     }, 600);
   }
 
+  function persistDeliverySelection() {
+    function readAndStore() {
+      var pick = function(selectors) {
+        for (var i = 0; i < selectors.length; i += 1) {
+          var el = document.querySelector(selectors[i]);
+          if (el && typeof el.value === 'string' && el.value.trim()) return el.value.trim();
+        }
+        return '';
+      };
+
+      var dateVal = pick([
+        'input[name="properties[Delivery date]"]',
+        'input[name="properties[delivery_date]"]',
+        'input[id^="delivery-date-"]'
+      ]);
+      var dayVal = pick([
+        'input[name="properties[delivery_day]"]',
+        'input[name="properties[Delivery day]"]',
+        'input[id^="delivery-day-en-"]'
+      ]);
+      var dayNameVal = pick([
+        'input[name="properties[Teslimat Günü]"]',
+        'input[name="properties[Teslimat GÃ¼nÃ¼]"]',
+        'input[name="properties[Teslimat Gunu]"]',
+        'input[name="properties[teslimat_gunu]"]',
+        'input[id^="delivery-day-name-"]'
+      ]);
+
+      if (dateVal) sessionStorage.setItem('delivery_date', dateVal);
+      if (dayVal) sessionStorage.setItem('delivery_day', dayVal);
+      if (dayNameVal) sessionStorage.setItem('delivery_day_name', dayNameVal);
+    }
+
+    document.addEventListener('change', function(e) {
+      var el = e.target;
+      if (!el || !el.matches) return;
+      if (
+        el.matches('input[name="properties[Delivery date]"]') ||
+        el.matches('input[name="properties[delivery_date]"]') ||
+        el.matches('input[name="properties[Teslimat Günü]"]') ||
+        el.matches('input[name="properties[Teslimat GÃ¼nÃ¼]"]') ||
+        el.matches('input[name="properties[Teslimat Gunu]"]') ||
+        el.matches('input[name="properties[teslimat_gunu]"]') ||
+        el.matches('input[name="properties[delivery_day]"]') ||
+        el.matches('input[id^="delivery-date-"]') ||
+        el.matches('input[id^="delivery-day-en-"]') ||
+        el.matches('input[id^="delivery-day-name-"]')
+      ) {
+        readAndStore();
+      }
+    }, true);
+
+    document.addEventListener('click', function(e) {
+      var btn = e.target && e.target.closest && e.target.closest('button[name="add"], .product-form__submit, [name="checkout"]');
+      if (!btn) return;
+      readAndStore();
+    }, true);
+
+    setTimeout(readAndStore, 400);
+    setTimeout(readAndStore, 1200);
+  }
+
   function deriveFromText(text) {
     if (!text) return null;
     var t = String(text).toLowerCase();
@@ -488,12 +550,14 @@ export async function GET() {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
       cleanupLegacySettingsButtons();
+      persistDeliverySelection();
       trackPurchaseType();
       interceptCheckout();
       setTimeout(cleanupLegacySettingsButtons, 300);
     });
   } else {
     cleanupLegacySettingsButtons();
+    persistDeliverySelection();
     trackPurchaseType();
     interceptCheckout();
     setTimeout(cleanupLegacySettingsButtons, 300);
