@@ -72,26 +72,20 @@ function buildDeliveryMeta(deliveryInfo = {}) {
   const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
   const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
   const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+  const fallbackText = '(belirtilmedi)';
 
-  const lineItemProperties = {};
-  const noteAttributes = [];
-
-  if (deliveryDate) {
-    lineItemProperties['Delivery date'] = deliveryDate;
-    lineItemProperties.delivery_date = deliveryDate;
-    noteAttributes.push({ name: 'Delivery date', value: deliveryDate });
-    noteAttributes.push({ name: 'delivery_date', value: deliveryDate });
-  }
-
-  if (deliveryDayName) {
-    lineItemProperties['Teslimat Gunu'] = deliveryDayName;
-    noteAttributes.push({ name: 'Teslimat Gunu', value: deliveryDayName });
-  }
-
-  if (deliveryDay) {
-    lineItemProperties.delivery_day = deliveryDay;
-    noteAttributes.push({ name: 'delivery_day', value: deliveryDay });
-  }
+  const lineItemProperties = {
+    'Delivery date': deliveryDate || fallbackText,
+    delivery_date: deliveryDate || fallbackText,
+    'Teslimat Gunu': deliveryDayName || fallbackText,
+    delivery_day: deliveryDay || fallbackText,
+  };
+  const noteAttributes = [
+    { name: 'Delivery date', value: deliveryDate || fallbackText },
+    { name: 'delivery_date', value: deliveryDate || fallbackText },
+    { name: 'Teslimat Gunu', value: deliveryDayName || fallbackText },
+    { name: 'delivery_day', value: deliveryDay || fallbackText },
+  ];
 
   return { lineItemProperties, noteAttributes };
 }

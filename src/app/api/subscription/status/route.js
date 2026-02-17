@@ -4,6 +4,28 @@ import { createOrder } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
 
+function buildDeliveryMetaFromSubscription(subscription) {
+    const fallbackText = '(belirtilmedi)';
+    const deliveryDate = String(subscription?.deliveryDate || '').trim();
+    const deliveryDayName = String(subscription?.deliveryDayName || '').trim();
+    const deliveryDay = String(subscription?.deliveryDay || '').trim();
+
+    const lineItemProperties = {
+        'Delivery date': deliveryDate || fallbackText,
+        delivery_date: deliveryDate || fallbackText,
+        'Teslimat Gunu': deliveryDayName || fallbackText,
+        delivery_day: deliveryDay || fallbackText,
+    };
+    const noteAttributes = [
+        { name: 'Delivery date', value: deliveryDate || fallbackText },
+        { name: 'delivery_date', value: deliveryDate || fallbackText },
+        { name: 'Teslimat Gunu', value: deliveryDayName || fallbackText },
+        { name: 'delivery_day', value: deliveryDay || fallbackText },
+    ];
+
+    return { lineItemProperties, noteAttributes };
+}
+
 async function backfillMissingShopifyOrder(subscription) {
     if (!subscription || subscription.status !== 'ACTIVE') return subscription;
     if (!subscription.plan?.shopifyVariantId) return subscription;
@@ -19,6 +41,7 @@ async function backfillMissingShopifyOrder(subscription) {
     if (!candidate) return subscription;
 
     try {
+        const deliveryMeta = buildDeliveryMetaFromSubscription(subscription);
         const shopifyOrder = await createOrder({
             customerEmail: subscription.customerEmail,
             customerName: subscription.customerName,
@@ -27,6 +50,7 @@ async function backfillMissingShopifyOrder(subscription) {
                     variantId: subscription.plan.shopifyVariantId,
                     quantity: 1,
                     price: subscription.plan.price.toString(),
+                    properties: deliveryMeta.lineItemProperties,
                 },
             ],
             shippingAddress: subscription.customerAddress
@@ -43,6 +67,7 @@ async function backfillMissingShopifyOrder(subscription) {
                     country: 'TR',
                 }
                 : null,
+            noteAttributes: deliveryMeta.noteAttributes,
             tags: ['abonelik', 'backfill'],
             iyzicoPaymentId: candidate.iyzicoPaymentId || '',
         });
