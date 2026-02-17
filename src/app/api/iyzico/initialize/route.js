@@ -470,8 +470,14 @@ export async function POST(request) {
       customerPhone,
       customerAddress,
       customerCity,
+      customerDistrict,
       customerIdentityNumber,
     } = body;
+    const district = String(customerDistrict || '').trim();
+    const mergedCustomerAddress = String(customerAddress || '').trim();
+    const customerAddressWithDistrict = district
+      ? `${mergedCustomerAddress}${mergedCustomerAddress ? ' | ' : ''}Ilce: ${district}`
+      : mergedCustomerAddress;
     const hasSubscriptionSignalsInCart = detectSubscriptionFromCartItems(cartItems);
     const deliveryInfo = mergeDeliveryInfo(
       {
@@ -599,7 +605,7 @@ export async function POST(request) {
           customerEmail,
           customerName,
           customerPhone,
-          customerAddress,
+          customerAddress: customerAddressWithDistrict,
           customerCity,
           customerIp: clientIp,
           planId: plan.id,
@@ -638,14 +644,14 @@ export async function POST(request) {
             contactName: customerName,
             city: customerCity || 'Istanbul',
             country: 'Turkey',
-            address: customerAddress || 'Istanbul Turkiye',
+            address: customerAddressWithDistrict || 'Istanbul Turkiye',
             zipCode: '34000',
           },
           shippingAddress: {
             contactName: customerName,
             city: customerCity || 'Istanbul',
             country: 'Turkey',
-            address: customerAddress || 'Istanbul Turkiye',
+            address: customerAddressWithDistrict || 'Istanbul Turkiye',
             zipCode: '34000',
           },
           ip: clientIp,
@@ -706,7 +712,7 @@ export async function POST(request) {
         identityNumber: customerIdentityNumber || '74300864791',
         lastLoginDate: new Date().toISOString().replace('T', ' ').split('.')[0],
         registrationDate: new Date().toISOString().replace('T', ' ').split('.')[0],
-        registrationAddress: customerAddress || 'Istanbul Turkiye',
+        registrationAddress: customerAddressWithDistrict || 'Istanbul Turkiye',
         ip: clientIp,
         city: customerCity || 'Istanbul',
         country: 'Turkey',
@@ -716,14 +722,14 @@ export async function POST(request) {
         contactName: customerName,
         city: customerCity || 'Istanbul',
         country: 'Turkey',
-        address: customerAddress || 'Istanbul Turkiye',
+        address: customerAddressWithDistrict || 'Istanbul Turkiye',
         zipCode: '34000',
       },
       billingAddress: {
         contactName: customerName,
         city: customerCity || 'Istanbul',
         country: 'Turkey',
-        address: customerAddress || 'Istanbul Turkiye',
+        address: customerAddressWithDistrict || 'Istanbul Turkiye',
         zipCode: '34000',
       },
       basketItems: [

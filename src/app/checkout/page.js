@@ -569,6 +569,7 @@ export default function CheckoutPage() {
                     customerPhone: formData.phone,
                     customerAddress: formData.address,
                     customerCity: formData.city,
+                    customerDistrict: formData.state,
                     customerZip: formData.zipCode,
                     deliveryDate: deliveryInfo.deliveryDate || '',
                     deliveryDay: deliveryInfo.deliveryDay || '',
