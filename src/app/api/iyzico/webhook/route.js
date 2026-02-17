@@ -36,8 +36,66 @@ function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   return next;
 }
 
-async function createShopifyOrderForRenewal(subscription, paymentId) {
+function extractDeliveryInfoFromConversationId(conversationId = '') {
+  const marker = '__dlv_';
+  const raw = String(conversationId || '');
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+  const token = raw.slice(idx + marker.length).trim();
+  if (!token) return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const [deliveryDate = '', deliveryDay = '', deliveryDayName = ''] = decoded.split('~');
+    return {
+      deliveryDate: String(deliveryDate || '').trim(),
+      deliveryDay: String(deliveryDay || '').trim(),
+      deliveryDayName: String(deliveryDayName || '').trim(),
+    };
+  } catch (_) {
+    return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+  }
+}
+
+function buildDeliveryMeta(deliveryInfo = {}) {
+  const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+
+  const lineItemProperties = {};
+  const noteAttributes = [];
+  if (deliveryDate) {
+    lineItemProperties['Delivery date'] = deliveryDate;
+    lineItemProperties.delivery_date = deliveryDate;
+    noteAttributes.push({ name: 'Delivery date', value: deliveryDate });
+    noteAttributes.push({ name: 'delivery_date', value: deliveryDate });
+  }
+  if (deliveryDayName) {
+    lineItemProperties['Teslimat Gunu'] = deliveryDayName;
+    noteAttributes.push({ name: 'Teslimat Gunu', value: deliveryDayName });
+  }
+  if (deliveryDay) {
+    lineItemProperties.delivery_day = deliveryDay;
+    noteAttributes.push({ name: 'delivery_day', value: deliveryDay });
+  }
+  return { lineItemProperties, noteAttributes };
+}
+
+function buildDeliveryNote(deliveryInfo = {}) {
+  const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+  const parts = [];
+  if (deliveryDate) parts.push(`Delivery date: ${deliveryDate}`);
+  if (deliveryDayName) parts.push(`Teslimat Gunu: ${deliveryDayName}`);
+  if (deliveryDay) parts.push(`delivery_day: ${deliveryDay}`);
+  return parts.join(' | ');
+}
+
+async function createShopifyOrderForRenewal(subscription, paymentId, deliveryInfo = {}) {
   if (!subscription?.plan?.shopifyVariantId) return null;
+  const deliveryMeta = buildDeliveryMeta(deliveryInfo);
+  const deliveryNote = buildDeliveryNote(deliveryInfo);
 
   return await createOrder({
     customerEmail: subscription.customerEmail,
@@ -47,6 +105,7 @@ async function createShopifyOrderForRenewal(subscription, paymentId) {
         variantId: subscription.plan.shopifyVariantId,
         quantity: 1,
         price: subscription.plan.price.toString(),
+        properties: deliveryMeta.lineItemProperties,
       },
     ],
     shippingAddress: subscription.customerAddress
@@ -63,6 +122,10 @@ async function createShopifyOrderForRenewal(subscription, paymentId) {
           country: 'TR',
         }
       : null,
+    note: deliveryNote
+      ? `iyzico Subscription Payment - Payment ID: ${paymentId || ''} | ${deliveryNote}`
+      : undefined,
+    noteAttributes: deliveryMeta.noteAttributes,
     tags: ['abonelik', 'iyzico-webhook-renewal'],
     iyzicoPaymentId: paymentId || '',
   });
@@ -78,6 +141,9 @@ export async function POST(request) {
 
     const iyziEventType = body.iyziEventType || body.eventType;
     const payload = body.data || body;
+    const deliveryInfo = extractDeliveryInfoFromConversationId(
+      payload?.conversationId || body?.conversationId || payload?.referenceCode || body?.referenceCode || ''
+    );
 
     const subscriptionReferenceCode =
       payload.subscriptionReferenceCode ||
@@ -180,7 +246,7 @@ export async function POST(request) {
       });
 
       try {
-        const order = await createShopifyOrderForRenewal(subscription, paymentId);
+        const order = await createShopifyOrderForRenewal(subscription, paymentId, deliveryInfo);
         if (order) {
           await prisma.payment.update({
             where: { id: payment.id },
