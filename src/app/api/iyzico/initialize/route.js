@@ -327,7 +327,8 @@ async function ensureIyzicoPlanReferences(plan) {
         pricingPlanReferenceCode = null;
       }
     } catch (_) {
-      // Keep existing reference on transient detail-read failures.
+      // If plan detail cannot be read, force re-create to avoid reusing broken/legacy plans.
+      pricingPlanReferenceCode = null;
     }
   }
 
@@ -384,6 +385,48 @@ async function ensureIyzicoPlanReferences(plan) {
 
     if (!pricingPlanReferenceCode) {
       throw new Error('iyzico pricing plan reference code alinmadi');
+    }
+
+    try {
+      const createdPlanDetail = await retrieveSubscriptionPricingPlan({
+        pricingPlanReferenceCode,
+        conversationId: `verify_pricing_${plan.id}`,
+      });
+      const created = createdPlanDetail?.data || createdPlanDetail || {};
+      const createdInterval = String(created.paymentInterval || created.interval || '').toUpperCase();
+      const createdCount = Math.max(
+        1,
+        Number(created.paymentIntervalCount ?? created.intervalCount ?? 1) || 1
+      );
+
+      const invalidCreatedPlan =
+        createdPlanDetail?.status !== 'success' ||
+        !createdInterval ||
+        createdInterval !== mapped.paymentInterval ||
+        createdCount !== mapped.paymentIntervalCount;
+
+      if (invalidCreatedPlan) {
+        const fallbackResult = await createSubscriptionPricingPlan({
+          name: `${plan.name} - fix-${Date.now().toString().slice(-6)}`,
+          price: plan.price,
+          currency: plan.currency || 'TRY',
+          paymentInterval: mapped.paymentInterval,
+          paymentIntervalCount: mapped.paymentIntervalCount,
+          productReferenceCode,
+          trialPeriodDays: plan.trialDays || 0,
+          conversationId: `create_pricing_fix_${plan.id}`,
+        });
+
+        if (fallbackResult.status === 'success') {
+          pricingPlanReferenceCode =
+            fallbackResult.data?.referenceCode ||
+            fallbackResult.referenceCode ||
+            fallbackResult.data?.pricingPlanReferenceCode ||
+            pricingPlanReferenceCode;
+        }
+      }
+    } catch (_) {
+      // If verification fails, keep latest created reference and continue.
     }
   }
 
