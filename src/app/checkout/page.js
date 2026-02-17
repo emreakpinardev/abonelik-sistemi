@@ -543,9 +543,9 @@ export default function CheckoutPage() {
             : '';
         const deliveryFromItems = extractDeliveryInfoFromItems(items);
         const deliveryInfo = {
-            deliveryDate: deliveryFromItems.deliveryDate || String(cartData?.delivery_date || '').trim(),
-            deliveryDay: deliveryFromItems.deliveryDay || String(cartData?.delivery_day || '').trim(),
-            deliveryDayName: deliveryFromItems.deliveryDayName || String(cartData?.delivery_day_name || '').trim(),
+            deliveryDate: deliveryFromItems.deliveryDate || String(cartData?.delivery_date || sessionStorage.getItem('delivery_date') || '').trim(),
+            deliveryDay: deliveryFromItems.deliveryDay || String(cartData?.delivery_day || sessionStorage.getItem('delivery_day') || '').trim(),
+            deliveryDayName: deliveryFromItems.deliveryDayName || String(cartData?.delivery_day_name || sessionStorage.getItem('delivery_day_name') || '').trim(),
         };
         setSubmitting(true);
         try {

@@ -236,6 +236,41 @@ export async function GET() {
   function redirectToOurCheckout() {
     detectCurrentSelection();
     detectCurrentFrequency();
+    function normalizeDeliveryKey(v) {
+      return String(v || '')
+        .toLowerCase()
+        .replace(/ı/g, 'i')
+        .replace(/İ/g, 'i')
+        .replace(/ü/g, 'u')
+        .replace(/Ü/g, 'u')
+        .replace(/ş/g, 's')
+        .replace(/Ş/g, 's')
+        .replace(/ğ/g, 'g')
+        .replace(/Ğ/g, 'g')
+        .replace(/ç/g, 'c')
+        .replace(/Ç/g, 'c')
+        .replace(/[\\u0300-\\u036f]/g, '')
+        .replace(/\\s+/g, ' ')
+        .trim();
+    }
+    function inferDeliveryFromItems(items) {
+      var out = { date: '', day: '', dayName: '' };
+      if (!Array.isArray(items)) return out;
+      for (var i = 0; i < items.length; i++) {
+        var props = (items[i] && items[i].properties) || {};
+        var keys = Object.keys(props);
+        for (var j = 0; j < keys.length; j++) {
+          var rawKey = keys[j];
+          var key = normalizeDeliveryKey(rawKey);
+          var value = String(props[rawKey] == null ? '' : props[rawKey]).trim();
+          if (!value) continue;
+          if (!out.date && (key === 'delivery date' || key === 'delivery_date' || key === 'teslimat tarihi' || key === 'teslimat_tarihi')) out.date = value;
+          if (!out.day && (key === 'delivery day' || key === 'delivery_day')) out.day = value;
+          if (!out.dayName && (key === 'teslimat gunu' || key === 'teslimat_gunu' || key === 'delivery day name' || key === 'delivery_day_name')) out.dayName = value;
+        }
+      }
+      return out;
+    }
     var readDeliveryField = function(selectors) {
       for (var i = 0; i < selectors.length; i += 1) {
         var el = document.querySelector(selectors[i]);
@@ -415,6 +450,13 @@ export async function GET() {
         var effectiveTotal = mappedItems.reduce(function(sum, item) {
           return sum + (parseFloat(item.line_price) || 0);
         }, 0);
+        var inferredDelivery = inferDeliveryFromItems(mappedItems);
+        var effectiveDeliveryDate = deliveryDateTop || inferredDelivery.date || sessionStorage.getItem('delivery_date') || '';
+        var effectiveDeliveryDay = deliveryDayTop || inferredDelivery.day || sessionStorage.getItem('delivery_day') || '';
+        var effectiveDeliveryDayName = deliveryDayNameTop || inferredDelivery.dayName || sessionStorage.getItem('delivery_day_name') || '';
+        if (effectiveDeliveryDate) sessionStorage.setItem('delivery_date', effectiveDeliveryDate);
+        if (effectiveDeliveryDay) sessionStorage.setItem('delivery_day', effectiveDeliveryDay);
+        if (effectiveDeliveryDayName) sessionStorage.setItem('delivery_day_name', effectiveDeliveryDayName);
 
         var cartData = {
           items: mappedItems,
@@ -426,9 +468,9 @@ export async function GET() {
           subscription_frequency: frequency,
           subscription_frequency_label: frequencyLabel,
           plan_id: planId || '',
-          delivery_date: deliveryDateTop || '',
-          delivery_day: deliveryDayTop || '',
-          delivery_day_name: deliveryDayNameTop || '',
+          delivery_date: effectiveDeliveryDate,
+          delivery_day: effectiveDeliveryDay,
+          delivery_day_name: effectiveDeliveryDayName,
           shop_url: window.location.origin,
           shop_name: (window.Shopify && window.Shopify.shop) || window.location.hostname,
           requires_shipping: cart.requires_shipping
