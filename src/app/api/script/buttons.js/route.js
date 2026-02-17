@@ -20,6 +20,18 @@ export async function GET() {
     if (!text) return false;
     text = String(text).toLowerCase().trim();
 
+    if (/^(gunluk|günlük|gunde bir|günde bir|her gun|her gün|daily|every day|every 1 day|1 gun|1 gün)/i.test(text)) {
+      setFrequency('1_day', '1 gunde bir');
+      return true;
+    }
+    if (/^(2 gun|2 gün|iki gun|iki gün|2 gunde|2 günde|every 2 day)/i.test(text)) {
+      setFrequency('2_day', '2 gunde bir');
+      return true;
+    }
+    if (/^(3 gun|3 gün|uc gun|üç gün|3 gunde|3 günde|every 3 day)/i.test(text)) {
+      setFrequency('3_day', '3 gunde bir');
+      return true;
+    }
     if (/^(dakikalik|dakikada bir|her dakika|minutely|every minute|1 minute|1 dakika)/i.test(text)) {
       setFrequency('1_minute', '1 dakikada bir');
       return true;
@@ -93,7 +105,7 @@ export async function GET() {
     var active = document.querySelectorAll('.active, .selected, [aria-selected="true"], input[type="radio"]:checked');
     for (var j = 0; j < active.length; j++) {
       var v = (active[j].textContent || active[j].value || '').toLowerCase();
-      if (v.includes('hafta') || v.includes('week') || v.includes('ay') || v.includes('month') || v.includes('dakika') || v.includes('minute')) {
+      if (v.includes('hafta') || v.includes('week') || v.includes('ay') || v.includes('month') || v.includes('gun') || v.includes('gün') || v.includes('day') || v.includes('dakika') || v.includes('minute')) {
         if (detectFrequencyFromText(v)) return;
       }
     }
@@ -147,31 +159,36 @@ export async function GET() {
     if (!text) return null;
     var t = String(text).toLowerCase();
 
-    var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|weekly|ay|month|months|monthly|dakika|min|minute|minutes|minutely)/i);
+    var m1 = t.match(/(\\d+)\\s*(hafta|week|weeks|weekly|ay|month|months|monthly|gun|gün|day|days|daily|dakika|min|minute|minutes|minutely)/i);
     if (m1) {
       var n = parseInt(m1[1], 10) || 1;
       // Guard against plan/variant IDs accidentally parsed as frequency.
       var token = String(m1[2] || '').toLowerCase();
       var isMinute = /(dakika|min|minute|minutes|minutely)/i.test(token);
-      var max = isMinute ? 1440 : 12;
+      var isDay = /(gun|gün|day|days|daily)/i.test(token);
+      var max = isMinute ? 1440 : isDay ? 365 : 12;
       if (n < 1 || n > max) n = 1;
       if (isMinute) return { code: n + '_minute', label: n + ' dakikada bir' };
+      if (isDay) return { code: n + '_day', label: n + ' gunde bir' };
       if (/(hafta|week|weekly)/i.test(m1[2])) return { code: n + '_week', label: n + ' haftada bir' };
       return { code: n + '_month', label: n + ' ayda bir' };
     }
 
-    // "weekly 3" / "monthly 2" / "minutely 5" style labels
-    var m2 = t.match(/(weekly|monthly|minutely)\\s*(\\d+)/i);
+    // "weekly 3" / "monthly 2" / "daily 2" / "minutely 5" style labels
+    var m2 = t.match(/(weekly|monthly|daily|minutely)\\s*(\\d+)/i);
     if (m2) {
       var n2 = parseInt(m2[2], 10) || 1;
       var isM2Minute = /minutely/i.test(m2[1]);
-      var max2 = isM2Minute ? 1440 : 12;
+      var isM2Day = /daily/i.test(m2[1]);
+      var max2 = isM2Minute ? 1440 : isM2Day ? 365 : 12;
       if (n2 < 1 || n2 > max2) n2 = 1;
       if (isM2Minute) return { code: n2 + '_minute', label: n2 + ' dakikada bir' };
+      if (isM2Day) return { code: n2 + '_day', label: n2 + ' gunde bir' };
       if (/weekly/i.test(m2[1])) return { code: n2 + '_week', label: n2 + ' haftada bir' };
       return { code: n2 + '_month', label: n2 + ' ayda bir' };
     }
 
+    if (t.indexOf('gunde bir') !== -1 || t.indexOf('günde bir') !== -1 || t.indexOf('her gun') !== -1 || t.indexOf('her gün') !== -1 || t.indexOf('every day') !== -1 || t.indexOf('daily') !== -1 || t.indexOf('gunluk') !== -1 || t.indexOf('günlük') !== -1) return { code: '1_day', label: '1 gunde bir' };
     if (t.indexOf('dakikada bir') !== -1 || t.indexOf('every minute') !== -1 || t.indexOf('minutely') !== -1) return { code: '1_minute', label: '1 dakikada bir' };
     if (t.indexOf('haftada bir') !== -1 || t.indexOf('every week') !== -1) return { code: '1_week', label: '1 haftada bir' };
     if (t.indexOf('2 haftada bir') !== -1) return { code: '2_week', label: '2 haftada bir' };
@@ -267,10 +284,11 @@ export async function GET() {
             if (item.properties.shipping_interval_unit_type && item.properties.shipping_interval_frequency) {
               var unit = String(item.properties.shipping_interval_unit_type).toLowerCase();
               var freq = parseInt(item.properties.shipping_interval_frequency, 10) || 1;
-              var maxFreq = (unit.indexOf('minute') !== -1 || unit.indexOf('dakika') !== -1 || unit.indexOf('min') !== -1) ? 1440 : 12;
+              var maxFreq = (unit.indexOf('minute') !== -1 || unit.indexOf('dakika') !== -1 || unit.indexOf('min') !== -1) ? 1440 : ((unit.indexOf('day') !== -1 || unit.indexOf('gun') !== -1 || unit.indexOf('gün') !== -1) ? 365 : 12);
               if (freq < 1 || freq > maxFreq) freq = 1;
               if (unit.indexOf('week') !== -1 || unit.indexOf('hafta') !== -1) pick(freq + '_week', freq + ' haftada bir', 2);
               if (unit.indexOf('month') !== -1 || unit.indexOf('ay') !== -1) pick(freq + '_month', freq + ' ayda bir', 2);
+              if (unit.indexOf('day') !== -1 || unit.indexOf('gun') !== -1 || unit.indexOf('gün') !== -1) pick(freq + '_day', freq + ' gunde bir', 2);
               if (unit.indexOf('minute') !== -1 || unit.indexOf('dakika') !== -1 || unit.indexOf('min') !== -1) pick(freq + '_minute', freq + ' dakikada bir', 2);
             }
 
@@ -339,15 +357,15 @@ export async function GET() {
         }
 
         // Final normalization to avoid invalid frequency like "<planId>_week".
-        var freqMatch = String(frequency || '').match(/^(\\d+)_(week|month|minute)$/i);
+        var freqMatch = String(frequency || '').match(/^(\\d+)_(week|month|day|minute)$/i);
         if (freqMatch) {
           var safeCount = parseInt(freqMatch[1], 10) || 1;
           var safeUnit = String(freqMatch[2]).toLowerCase();
-          var safeMax = safeUnit === 'minute' ? 1440 : 12;
+          var safeMax = safeUnit === 'minute' ? 1440 : (safeUnit === 'day' ? 365 : 12);
           if (safeCount < 1 || safeCount > safeMax) safeCount = 1;
           frequency = safeCount + '_' + safeUnit;
           if (!frequencyLabel || /^\\d{6,}/.test(String(frequencyLabel).trim())) {
-            frequencyLabel = safeCount + (safeUnit === 'week' ? ' haftada bir' : safeUnit === 'minute' ? ' dakikada bir' : ' ayda bir');
+            frequencyLabel = safeCount + (safeUnit === 'week' ? ' haftada bir' : safeUnit === 'day' ? ' gunde bir' : safeUnit === 'minute' ? ' dakikada bir' : ' ayda bir');
           }
         } else if (purchaseType === 'subscription') {
           var fallback = deriveFromText(frequencyLabel || '');
@@ -357,6 +375,9 @@ export async function GET() {
           } else if (/hafta|week/i.test(String(frequencyLabel || ''))) {
             frequency = '1_week';
             frequencyLabel = '1 haftada bir';
+          } else if (/gun|gün|day|daily/i.test(String(frequencyLabel || ''))) {
+            frequency = '1_day';
+            frequencyLabel = '1 gunde bir';
           } else if (/dakika|minute|min/i.test(String(frequencyLabel || ''))) {
             frequency = '1_minute';
             frequencyLabel = '1 dakikada bir';
