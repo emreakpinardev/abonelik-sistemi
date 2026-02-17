@@ -28,13 +28,13 @@ function generateAuthorizationHeader(uri, body, randomString) {
     return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
 }
 
-async function iyzicoRequest(path, body) {
+async function iyzicoRequest(path, body, method = 'POST') {
     const randomString = generateRandomString();
     const payload = body || {};
     const authorization = generateAuthorizationHeader(path, payload, randomString);
 
     const response = await fetch(BASE_URL + path, {
-        method: 'POST',
+        method,
         headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
@@ -42,7 +42,7 @@ async function iyzicoRequest(path, body) {
             'x-iyzi-rnd': randomString,
             'x-iyzi-client-version': 'iyzipay-node-2.0.65',
         },
-        body: JSON.stringify(payload),
+        ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
     });
 
     const raw = await response.text();
@@ -161,6 +161,28 @@ export async function createSubscriptionPricingPlan({
     };
 
     return await iyzicoRequest(`/v2/subscription/products/${productReferenceCode}/pricing-plans`, body);
+}
+
+/**
+ * Subscription API: fiyat plani detayi getir
+ */
+export async function retrieveSubscriptionPricingPlan({
+    pricingPlanReferenceCode,
+    locale = 'tr',
+    conversationId,
+}) {
+    if (!pricingPlanReferenceCode) {
+        throw new Error('pricingPlanReferenceCode gerekli');
+    }
+
+    const query = new URLSearchParams();
+    if (locale) query.set('locale', locale);
+    if (conversationId) query.set('conversationId', conversationId);
+    const path =
+        `/v2/subscription/pricing-plans/${pricingPlanReferenceCode}` +
+        (query.toString() ? `?${query.toString()}` : '');
+
+    return await iyzicoRequest(path, {}, 'GET');
 }
 
 /**

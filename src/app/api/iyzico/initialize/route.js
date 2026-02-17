@@ -4,6 +4,7 @@ import {
   initializeSubscriptionCheckoutForm,
   createSubscriptionProduct,
   createSubscriptionPricingPlan,
+  retrieveSubscriptionPricingPlan,
 } from '@/lib/iyzico';
 import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
@@ -258,6 +259,10 @@ function getRequestedPlanPrice(productPrice, cartItems) {
 async function ensureIyzicoPlanReferences(plan) {
   let productReferenceCode = plan.iyzicoProductReferenceCode;
   let pricingPlanReferenceCode = plan.iyzicoPricingPlanReferenceCode;
+  const iyzicoBaseUrl = String(process.env.IYZICO_BASE_URL || '').toLowerCase();
+  const expectedPricingInterval = toIyzicoPaymentInterval(plan.interval, plan.intervalCount, {
+    allowMinutely: iyzicoBaseUrl.includes('sandbox'),
+  });
 
   if (!productReferenceCode) {
     let productResult = await createSubscriptionProduct({
@@ -298,11 +303,36 @@ async function ensureIyzicoPlanReferences(plan) {
     }
   }
 
+  if (pricingPlanReferenceCode) {
+    try {
+      const existingPlanResult = await retrieveSubscriptionPricingPlan({
+        pricingPlanReferenceCode,
+        conversationId: `check_pricing_${plan.id}`,
+      });
+
+      const existing = existingPlanResult?.data || existingPlanResult || {};
+      const existingInterval = String(existing.paymentInterval || existing.interval || '').toUpperCase();
+      const existingCount = Math.max(
+        1,
+        Number(existing.paymentIntervalCount ?? existing.intervalCount ?? 1) || 1
+      );
+
+      const mismatch =
+        existingPlanResult?.status !== 'success' ||
+        !existingInterval ||
+        existingInterval !== expectedPricingInterval.paymentInterval ||
+        existingCount !== expectedPricingInterval.paymentIntervalCount;
+
+      if (mismatch) {
+        pricingPlanReferenceCode = null;
+      }
+    } catch (_) {
+      // Keep existing reference on transient detail-read failures.
+    }
+  }
+
   if (!pricingPlanReferenceCode) {
-    const iyzicoBaseUrl = String(process.env.IYZICO_BASE_URL || '').toLowerCase();
-    const mapped = toIyzicoPaymentInterval(plan.interval, plan.intervalCount, {
-      allowMinutely: iyzicoBaseUrl.includes('sandbox'),
-    });
+    const mapped = expectedPricingInterval;
 
     let pricingResult = await createSubscriptionPricingPlan({
       name: `${plan.name}`,
