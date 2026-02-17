@@ -147,7 +147,7 @@ export default function AdminDashboard() {
     if (!newTemplateForm.name) return alert("Şablon adı girin");
 
     // Auto desc if empty
-    const intervalTextMap = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
+    const intervalTextMap = { DAILY: 'Gunde', WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
     const desc = newTemplateForm.description.trim() || `${newTemplateForm.intervalCount} ${intervalTextMap[newTemplateForm.interval] || 'Ayda'} 1 yenilenir`;
 
     try {
@@ -300,7 +300,7 @@ export default function AdminDashboard() {
 
   // --- HELPERS ---
   function intervalLabel(interval, count) {
-    const map = { WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
+    const map = { DAILY: 'Gunde', WEEKLY: 'Haftada', MONTHLY: 'Ayda', QUARTERLY: '3 Ayda', YEARLY: 'Yılda', MINUTELY: 'Dakikada' };
     const unit = map[interval] || 'Ayda';
     return `${count} ${unit} 1`;
   }
@@ -368,6 +368,7 @@ export default function AdminDashboard() {
                 <div style={{ flex: 1 }}>
                   <label style={st.label}>Sıklık</label>
                   <select style={st.select} value={newTemplateForm.interval} onChange={e => setNewTemplateForm({ ...newTemplateForm, interval: e.target.value })}>
+                    <option value="DAILY">Gunluk</option>
                     <option value="MINUTELY">Dakikalik</option>
                     <option value="WEEKLY">Haftalık</option>
                     <option value="MONTHLY">Aylık</option>

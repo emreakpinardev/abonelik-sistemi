@@ -18,6 +18,7 @@ function buildOptionValue({ interval, intervalCount }) {
   const normalizedInterval = String(interval || 'MONTHLY').toUpperCase();
 
   if (normalizedInterval === 'WEEKLY') return `Abonelik ${count} haftada bir`;
+  if (normalizedInterval === 'DAILY') return `Abonelik ${count} gunde bir`;
   if (normalizedInterval === 'MINUTELY') return `Abonelik ${count} dakikada bir`;
   if (normalizedInterval === 'YEARLY') return `Abonelik ${count} yılda bir`;
   return `Abonelik ${count} ayda bir`;
@@ -27,6 +28,7 @@ function buildLegacyOptionValue({ interval, intervalCount }) {
   const count = Math.max(1, Number(intervalCount) || 1);
   const normalizedInterval = String(interval || 'MONTHLY').toUpperCase();
   if (normalizedInterval === 'WEEKLY') return `${count} haftada bir`;
+  if (normalizedInterval === 'DAILY') return `${count} gunde bir`;
   if (normalizedInterval === 'MINUTELY') return `${count} dakikada bir`;
   if (normalizedInterval === 'YEARLY') return `${count} yılda bir`;
   return `${count} ayda bir`;

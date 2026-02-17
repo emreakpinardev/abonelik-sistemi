@@ -348,6 +348,7 @@ export default function AdminPage() {
                                                         value={planForm.interval}
                                                         onChange={(e) => setPlanForm({ ...planForm, interval: e.target.value })}
                                                     >
+                                                        <option value="DAILY">Gunluk</option>
                                                         <option value="MINUTELY">Dakikalik</option>
                                                         <option value="WEEKLY">Haftalık</option>
                                                         <option value="MONTHLY">Aylık</option>
@@ -401,7 +402,8 @@ export default function AdminPage() {
                                                 <div className="plan-price">
                                                     {plan.price.toLocaleString('tr-TR')}₺
                                                     <span>
-                                                        /{plan.interval === 'MONTHLY' ? 'ay' :
+                                                        /{plan.interval === 'DAILY' ? 'gun' :
+                                                            plan.interval === 'MONTHLY' ? 'ay' :
                                                             plan.interval === 'QUARTERLY' ? '3 ay' :
                                                                 plan.interval === 'YEARLY' ? 'yıl' :
                                                                     plan.interval === 'WEEKLY' ? 'hafta' :
@@ -423,3 +425,4 @@ export default function AdminPage() {
         </div>
     );
 }
+

@@ -23,6 +23,9 @@ function parseFrequency(freq) {
   if (unit === 'week') {
     interval = 'WEEKLY';
     intervalCount = count;
+  } else if (unit === 'day') {
+    interval = 'DAILY';
+    intervalCount = count;
   } else if (unit === 'minute') {
     interval = 'MINUTELY';
     intervalCount = count;
@@ -40,10 +43,12 @@ function firstCsvValue(value) {
     .trim();
 }
 
-function toIyzicoPaymentInterval(interval, intervalCount) {
+function toIyzicoPaymentInterval(interval, intervalCount, { allowMinutely = false } = {}) {
   const count = Math.max(1, Number(intervalCount) || 1);
 
   switch (interval) {
+    case 'DAILY':
+      return { paymentInterval: 'DAILY', paymentIntervalCount: count };
     case 'WEEKLY':
       return { paymentInterval: 'WEEKLY', paymentIntervalCount: count };
     case 'YEARLY':
@@ -51,8 +56,11 @@ function toIyzicoPaymentInterval(interval, intervalCount) {
     case 'QUARTERLY':
       return { paymentInterval: 'MONTHLY', paymentIntervalCount: count * 3 };
     case 'MINUTELY':
-      // Subscription API does not support minutely in production.
-      return { paymentInterval: 'DAILY', paymentIntervalCount: 1 };
+      // MINUTELY only works in sandbox. In live, degrade to DAILY.
+      if (allowMinutely) {
+        return { paymentInterval: 'MINUTELY', paymentIntervalCount: count };
+      }
+      return { paymentInterval: 'DAILY', paymentIntervalCount: Math.max(1, Math.ceil(count / 1440)) };
     case 'MONTHLY':
     default:
       return { paymentInterval: 'MONTHLY', paymentIntervalCount: count };
@@ -155,7 +163,10 @@ async function ensureIyzicoPlanReferences(plan) {
   }
 
   if (!pricingPlanReferenceCode) {
-    const mapped = toIyzicoPaymentInterval(plan.interval, plan.intervalCount);
+    const iyzicoBaseUrl = String(process.env.IYZICO_BASE_URL || '').toLowerCase();
+    const mapped = toIyzicoPaymentInterval(plan.interval, plan.intervalCount, {
+      allowMinutely: iyzicoBaseUrl.includes('sandbox'),
+    });
 
     let pricingResult = await createSubscriptionPricingPlan({
       name: `${plan.name}`,

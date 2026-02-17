@@ -327,6 +327,7 @@ function generatePortalHTML(appUrl) {
     function getFreqValue(plan) {
         if (!plan) return '1_month';
         if (plan.interval === 'MINUTELY') return plan.intervalCount + '_minute';
+        if (plan.interval === 'DAILY') return plan.intervalCount + '_day';
         if (plan.interval === 'WEEKLY') return plan.intervalCount + '_week';
         if (plan.interval === 'QUARTERLY') return '3_month';
         if (plan.interval === 'YEARLY') return '12_month';
@@ -369,6 +370,8 @@ function generatePortalHTML(appUrl) {
                 html += '<option value="5_minute"' + (currentFreq === '5_minute' ? ' selected' : '') + '>5 dakikada bir</option>';
                 html += '<option value="10_minute"' + (currentFreq === '10_minute' ? ' selected' : '') + '>10 dakikada bir</option>';
                 html += '<option value="30_minute"' + (currentFreq === '30_minute' ? ' selected' : '') + '>30 dakikada bir</option>';
+                html += '<option value="1_day"' + (currentFreq === '1_day' ? ' selected' : '') + '>Gunde bir</option>';
+                html += '<option value="2_day"' + (currentFreq === '2_day' ? ' selected' : '') + '>2 gunde bir</option>';
                 html += '<option value="1_week"' + (currentFreq === '1_week' ? ' selected' : '') + '>Haftada bir</option>';
                 html += '<option value="2_week"' + (currentFreq === '2_week' ? ' selected' : '') + '>2 haftada bir</option>';
                 html += '<option value="1_month"' + (currentFreq === '1_month' ? ' selected' : '') + '>Ayda bir</option>';
