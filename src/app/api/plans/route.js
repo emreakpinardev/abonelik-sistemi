@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { ensurePlanVariant } from '@/lib/shopify-plan-variant';
+import { shopifyREST } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,31 @@ export async function GET(request) {
             orderBy: { price: 'asc' },
         });
 
-        const response = NextResponse.json({ plans });
+        // If plan prices are edited directly in Shopify, DB can become stale.
+        // Sync response (and DB) with live Shopify variant prices.
+        const syncedPlans = await Promise.all(
+            plans.map(async (plan) => {
+                if (!plan.shopifyVariantId) return plan;
+                try {
+                    const variantRes = await shopifyREST(`/variants/${plan.shopifyVariantId}.json`);
+                    const variantPrice = Number.parseFloat(variantRes?.variant?.price);
+                    if (!Number.isFinite(variantPrice) || variantPrice <= 0) return plan;
+
+                    if (Math.abs(Number(plan.price || 0) - variantPrice) > 0.009) {
+                        const updated = await prisma.plan.update({
+                            where: { id: plan.id },
+                            data: { price: variantPrice },
+                        });
+                        return updated;
+                    }
+                    return plan;
+                } catch (_) {
+                    return plan;
+                }
+            })
+        );
+
+        const response = NextResponse.json({ plans: syncedPlans });
         response.headers.set('Access-Control-Allow-Origin', '*');
         return response;
     } catch (error) {
