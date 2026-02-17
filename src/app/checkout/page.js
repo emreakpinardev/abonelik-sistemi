@@ -541,7 +541,12 @@ export default function CheckoutPage() {
         const effectiveFrequency = effectiveType === 'subscription'
             ? (normalizedFrequency.frequency || '1_month')
             : '';
-        const deliveryInfo = extractDeliveryInfoFromItems(items);
+        const deliveryFromItems = extractDeliveryInfoFromItems(items);
+        const deliveryInfo = {
+            deliveryDate: deliveryFromItems.deliveryDate || String(cartData?.delivery_date || '').trim(),
+            deliveryDay: deliveryFromItems.deliveryDay || String(cartData?.delivery_day || '').trim(),
+            deliveryDayName: deliveryFromItems.deliveryDayName || String(cartData?.delivery_day_name || '').trim(),
+        };
         setSubmitting(true);
         try {
             const res = await fetch('/api/iyzico/initialize', {

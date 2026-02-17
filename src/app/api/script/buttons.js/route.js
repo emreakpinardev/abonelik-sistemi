@@ -236,6 +236,31 @@ export async function GET() {
   function redirectToOurCheckout() {
     detectCurrentSelection();
     detectCurrentFrequency();
+    var readDeliveryField = function(selectors) {
+      for (var i = 0; i < selectors.length; i += 1) {
+        var el = document.querySelector(selectors[i]);
+        if (el && typeof el.value === 'string' && el.value.trim()) return el.value.trim();
+      }
+      return '';
+    };
+    var deliveryDateTop = readDeliveryField([
+      'input[name="properties[Delivery date]"]',
+      'input[name="properties[delivery_date]"]',
+      'input[name="properties[Teslimat tarihi]"]',
+      'input[name="properties[teslimat_tarihi]"]',
+      'input[id^="delivery-date-"]'
+    ]);
+    var deliveryDayTop = readDeliveryField([
+      'input[name="properties[delivery_day]"]',
+      'input[name="properties[Delivery day]"]',
+      'input[id^="delivery-day-en-"]'
+    ]);
+    var deliveryDayNameTop = readDeliveryField([
+      'input[name="properties[Teslimat Günü]"]',
+      'input[name="properties[Teslimat Gunu]"]',
+      'input[name="properties[teslimat_gunu]"]',
+      'input[id^="delivery-day-name-"]'
+    ]);
 
     fetch('/cart.js')
       .then(function(res) { return res.json(); })
@@ -401,6 +426,9 @@ export async function GET() {
           subscription_frequency: frequency,
           subscription_frequency_label: frequencyLabel,
           plan_id: planId || '',
+          delivery_date: deliveryDateTop || '',
+          delivery_day: deliveryDayTop || '',
+          delivery_day_name: deliveryDayNameTop || '',
           shop_url: window.location.origin,
           shop_name: (window.Shopify && window.Shopify.shop) || window.location.hostname,
           requires_shipping: cart.requires_shipping
