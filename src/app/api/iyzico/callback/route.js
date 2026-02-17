@@ -124,6 +124,11 @@ export async function POST(request) {
     const url = new URL(request.url);
     const subscriptionId = url.searchParams.get('subscriptionId');
     const paymentType = url.searchParams.get('type');
+    console.info('[iyzico/callback] incoming', {
+      paymentType: paymentType || null,
+      hasSubscriptionId: Boolean(subscriptionId),
+      hasToken: Boolean(token),
+    });
 
     if (!token) {
       return redirectToResult('error', 'Eksik token bilgisi');

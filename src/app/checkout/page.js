@@ -408,20 +408,26 @@ export default function CheckoutPage() {
         if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone || !formData.city || !formData.address) {
             alert('Lütfen tüm zorunlu alanları doldurun'); return;
         }
+        const inferredSubscription = detectSubscriptionFromItems(items);
+        const effectiveType = (purchaseType === 'subscription' || inferredSubscription) ? 'subscription' : 'single';
+        const normalizedFrequency = normalizeFrequencyInput(subscriptionFrequency, subscriptionFrequencyLabel);
+        const effectiveFrequency = effectiveType === 'subscription'
+            ? (normalizedFrequency.frequency || '1_month')
+            : '';
         setSubmitting(true);
         try {
             const res = await fetch('/api/iyzico/initialize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: purchaseType,
+                    type: effectiveType,
                     planId,
                     productId: items.map(i => i.id).join(','),
                     productName: items.map(i => i.name).join(', '),
                     productPrice: total,
                     variantId: items.map(i => i.variant_id).join(','),
                     cartItems: items,
-                    subscriptionFrequency,
+                    subscriptionFrequency: effectiveFrequency,
                     shippingMethod,
                     shippingCost,
                     shopUrl: cartData?.shop_url,

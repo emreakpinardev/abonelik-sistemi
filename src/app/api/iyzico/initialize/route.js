@@ -10,6 +10,40 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 
+function isTruthySubscriptionValue(value) {
+  if (value === true) return true;
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'subscription';
+}
+
+function detectSubscriptionFromCartItems(cartItems = []) {
+  if (!Array.isArray(cartItems)) return false;
+  return cartItems.some((item) => {
+    if (item?.selling_plan?.name) return true;
+    if (item?.selling_plan_allocation?.selling_plan?.name) return true;
+    const p = item?.properties || {};
+    return (
+      isTruthySubscriptionValue(p._subscription) ||
+      isTruthySubscriptionValue(p._seal_subscription) ||
+      isTruthySubscriptionValue(p.subscription) ||
+      String(p['Purchase type'] || '').toLowerCase() === 'subscription' ||
+      String(p.purchase_type || '').toLowerCase() === 'subscription' ||
+      !!p.shipping_interval_unit_type ||
+      !!p.shipping_interval_frequency ||
+      !!p._plan_id ||
+      !!p.plan_id
+    );
+  });
+}
+
+function shouldForceSubscriptionFlow({ type, planId, subscriptionFrequency, cartItems }) {
+  if (String(type || '').toLowerCase() === 'subscription') return true;
+  if (planId) return true;
+  if (String(subscriptionFrequency || '').trim()) return true;
+  if (detectSubscriptionFromCartItems(cartItems)) return true;
+  return false;
+}
+
 function parseFrequency(freq) {
   let interval = 'MONTHLY';
   let intervalCount = 1;
@@ -245,7 +279,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const {
-      type = 'subscription',
+      type: rawType = 'subscription',
       planId,
       productId,
       productPrice,
@@ -260,6 +294,23 @@ export async function POST(request) {
       customerCity,
       customerIdentityNumber,
     } = body;
+    const hasSubscriptionSignalsInCart = detectSubscriptionFromCartItems(cartItems);
+    const type = shouldForceSubscriptionFlow({
+      type: rawType,
+      planId,
+      subscriptionFrequency,
+      cartItems,
+    })
+      ? 'subscription'
+      : 'single';
+    console.info('[iyzico/initialize] flow decision', {
+      rawType,
+      resolvedType: type,
+      planId: planId || null,
+      subscriptionFrequency: subscriptionFrequency || null,
+      hasSubscriptionSignalsInCart,
+      cartItemsCount: Array.isArray(cartItems) ? cartItems.length : 0,
+    });
 
     const basketId = uuidv4();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
