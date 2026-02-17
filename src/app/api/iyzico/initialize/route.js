@@ -104,12 +104,28 @@ function extractDeliveryInfoFromCartItems(cartItems = []) {
 
   if (!Array.isArray(cartItems)) return result;
 
-  const normalizeKey = (value) =>
+  const normalizeText = (value) =>
     String(value || '')
+      .replace(/Ä±/g, 'i')
+      .replace(/ÅŸ/g, 's')
+      .replace(/ÄŸ/g, 'g')
+      .replace(/Ã§/g, 'c')
+      .replace(/Ã¶/g, 'o')
+      .replace(/Ã¼/g, 'u')
+      .replace(/[Ä±Ä°]/g, 'i')
+      .replace(/[ÅŸÅž]/g, 's')
+      .replace(/[ÄŸÄž]/g, 'g')
+      .replace(/[Ã§Ã‡]/g, 'c')
+      .replace(/[Ã¶Ã–]/g, 'o')
+      .replace(/[Ã¼Ãœ]/g, 'u');
+
+  const normalizeKey = (value) =>
+    normalizeText(value)
       .toLocaleLowerCase('tr-TR')
       .replace(/\u0131/g, 'i')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
   for (const item of cartItems) {
@@ -117,7 +133,7 @@ function extractDeliveryInfoFromCartItems(cartItems = []) {
     const entries = Object.entries(props);
     for (const [rawKey, rawValue] of entries) {
       const key = normalizeKey(rawKey);
-      const value = String(rawValue || '').trim();
+      const value = normalizeText(rawValue).trim();
       if (!value) continue;
 
       if (
@@ -144,6 +160,14 @@ function extractDeliveryInfoFromCartItems(cartItems = []) {
   }
 
   return result;
+}
+
+function mergeDeliveryInfo(primary = {}, fallback = {}) {
+  return {
+    deliveryDate: String(primary.deliveryDate || fallback.deliveryDate || '').trim(),
+    deliveryDay: String(primary.deliveryDay || fallback.deliveryDay || '').trim(),
+    deliveryDayName: String(primary.deliveryDayName || fallback.deliveryDayName || '').trim(),
+  };
 }
 
 function toIyzicoPaymentInterval(interval, intervalCount, { allowMinutely = false } = {}) {
@@ -356,6 +380,9 @@ export async function POST(request) {
       variantId,
       cartItems = [],
       subscriptionFrequency,
+      deliveryDate,
+      deliveryDay,
+      deliveryDayName,
       customerEmail,
       customerName,
       customerPhone,
@@ -364,7 +391,14 @@ export async function POST(request) {
       customerIdentityNumber,
     } = body;
     const hasSubscriptionSignalsInCart = detectSubscriptionFromCartItems(cartItems);
-    const deliveryInfo = extractDeliveryInfoFromCartItems(cartItems);
+    const deliveryInfo = mergeDeliveryInfo(
+      {
+        deliveryDate,
+        deliveryDay,
+        deliveryDayName,
+      },
+      extractDeliveryInfoFromCartItems(cartItems)
+    );
     const type = shouldForceSubscriptionFlow({
       type: rawType,
       planId,
@@ -381,6 +415,9 @@ export async function POST(request) {
       subscriptionFrequency: subscriptionFrequency || null,
       normalizedSubscriptionFrequency: normalizedSubscriptionFrequency || null,
       hasSubscriptionSignalsInCart,
+      deliveryDate: deliveryInfo.deliveryDate || null,
+      deliveryDay: deliveryInfo.deliveryDay || null,
+      deliveryDayName: deliveryInfo.deliveryDayName || null,
       cartItemsCount: Array.isArray(cartItems) ? cartItems.length : 0,
     });
 

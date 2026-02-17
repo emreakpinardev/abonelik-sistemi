@@ -112,6 +112,41 @@ function sanitizeCartData(rawData) {
     };
 }
 
+function extractDeliveryInfoFromItems(items = []) {
+    const result = { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+    if (!Array.isArray(items) || items.length === 0) return result;
+
+    const normalizeKey = (value) =>
+        repairMojibake(String(value || ''))
+            .toLocaleLowerCase('tr-TR')
+            .replace(/ı/g, 'i')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    for (const item of items) {
+        const props = item?.properties || {};
+        for (const [rawKey, rawValue] of Object.entries(props)) {
+            const key = normalizeKey(rawKey);
+            const value = repairMojibake(String(rawValue || '')).trim();
+            if (!value) continue;
+
+            if (!result.deliveryDate && (key === 'delivery date' || key === 'delivery_date' || key === 'teslimat tarihi' || key === 'teslimat_tarihi')) {
+                result.deliveryDate = value;
+            }
+            if (!result.deliveryDay && (key === 'delivery day' || key === 'delivery_day')) {
+                result.deliveryDay = value;
+            }
+            if (!result.deliveryDayName && (key === 'teslimat gunu' || key === 'teslimat_gunu')) {
+                result.deliveryDayName = value;
+            }
+        }
+    }
+
+    return result;
+}
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -506,6 +541,7 @@ export default function CheckoutPage() {
         const effectiveFrequency = effectiveType === 'subscription'
             ? (normalizedFrequency.frequency || '1_month')
             : '';
+        const deliveryInfo = extractDeliveryInfoFromItems(items);
         setSubmitting(true);
         try {
             const res = await fetch('/api/iyzico/initialize', {
@@ -529,6 +565,9 @@ export default function CheckoutPage() {
                     customerAddress: formData.address,
                     customerCity: formData.city,
                     customerZip: formData.zipCode,
+                    deliveryDate: deliveryInfo.deliveryDate || '',
+                    deliveryDay: deliveryInfo.deliveryDay || '',
+                    deliveryDayName: deliveryInfo.deliveryDayName || '',
                 }),
             });
             const text = await res.text();
