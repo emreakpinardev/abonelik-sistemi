@@ -68,8 +68,37 @@ function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   return next;
 }
 
-async function createShopifyOrderForSubscription(subscription, paymentId, tags = []) {
+function buildDeliveryMeta(deliveryInfo = {}) {
+  const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+
+  const lineItemProperties = {};
+  const noteAttributes = [];
+
+  if (deliveryDate) {
+    lineItemProperties['Delivery date'] = deliveryDate;
+    lineItemProperties.delivery_date = deliveryDate;
+    noteAttributes.push({ name: 'Delivery date', value: deliveryDate });
+    noteAttributes.push({ name: 'delivery_date', value: deliveryDate });
+  }
+
+  if (deliveryDayName) {
+    lineItemProperties['Teslimat Gunu'] = deliveryDayName;
+    noteAttributes.push({ name: 'Teslimat Gunu', value: deliveryDayName });
+  }
+
+  if (deliveryDay) {
+    lineItemProperties.delivery_day = deliveryDay;
+    noteAttributes.push({ name: 'delivery_day', value: deliveryDay });
+  }
+
+  return { lineItemProperties, noteAttributes };
+}
+
+async function createShopifyOrderForSubscription(subscription, paymentId, tags = [], deliveryInfo = {}) {
   if (!subscription?.plan?.shopifyVariantId) return null;
+  const deliveryMeta = buildDeliveryMeta(deliveryInfo);
 
   const shopifyOrder = await createOrder({
     customerEmail: subscription.customerEmail,
@@ -79,6 +108,7 @@ async function createShopifyOrderForSubscription(subscription, paymentId, tags =
         variantId: subscription.plan.shopifyVariantId,
         quantity: 1,
         price: subscription.plan.price.toString(),
+        properties: deliveryMeta.lineItemProperties,
       },
     ],
     shippingAddress: subscription.customerAddress
@@ -95,6 +125,7 @@ async function createShopifyOrderForSubscription(subscription, paymentId, tags =
           country: 'TR',
         }
       : null,
+    noteAttributes: deliveryMeta.noteAttributes,
     tags,
     iyzicoPaymentId: paymentId || '',
   });
@@ -123,6 +154,11 @@ export async function POST(request) {
     const token = formData.get('token');
     const url = new URL(request.url);
     const subscriptionId = url.searchParams.get('subscriptionId');
+    const deliveryInfo = {
+      deliveryDate: url.searchParams.get('deliveryDate') || '',
+      deliveryDay: url.searchParams.get('deliveryDay') || '',
+      deliveryDayName: url.searchParams.get('deliveryDayName') || '',
+    };
     const paymentType = url.searchParams.get('type');
     console.info('[iyzico/callback] incoming', {
       paymentType: paymentType || null,
@@ -272,7 +308,8 @@ export async function POST(request) {
           const shopifyOrder = await createShopifyOrderForSubscription(
             subscription,
             ensuredPayment?.iyzicoPaymentId || '',
-            ['abonelik', 'ilk-odeme', 'soft-success']
+            ['abonelik', 'ilk-odeme', 'soft-success'],
+            deliveryInfo
           );
           if (shopifyOrder && ensuredPayment?.id) {
             await prisma.payment.update({
@@ -384,7 +421,12 @@ export async function POST(request) {
     }
 
     try {
-      const shopifyOrder = await createShopifyOrderForSubscription(subscription, paymentId, ['abonelik', 'ilk-odeme']);
+      const shopifyOrder = await createShopifyOrderForSubscription(
+        subscription,
+        paymentId,
+        ['abonelik', 'ilk-odeme'],
+        deliveryInfo
+      );
       if (shopifyOrder) {
         await prisma.payment.update({
           where: { id: createdPayment.id },
@@ -409,3 +451,4 @@ export async function POST(request) {
     return redirectToResult('error', 'Bir hata olustu: ' + error.message);
   }
 }
+

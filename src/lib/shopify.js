@@ -1,6 +1,6 @@
 /**
- * Shopify Admin API istemcisi
- * GraphQL kullanarak sipariş oluşturma ve ürün bilgisi çekme
+ * Shopify Admin API client
+ * Uses GraphQL/REST for orders and product/customer operations.
  */
 
 const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
@@ -11,7 +11,7 @@ const SHOPIFY_GRAPHQL_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY
 const SHOPIFY_REST_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
 
 /**
- * Shopify GraphQL API çağrısı
+ * Shopify GraphQL API call
  */
 async function shopifyGraphQL(query, variables = {}) {
     const response = await fetch(SHOPIFY_GRAPHQL_URL, {
@@ -38,7 +38,7 @@ async function shopifyGraphQL(query, variables = {}) {
 }
 
 /**
- * Shopify REST API çağrısı
+ * Shopify REST API call
  */
 async function shopifyREST(endpoint, method = 'GET', body = null) {
     const options = {
@@ -64,7 +64,7 @@ async function shopifyREST(endpoint, method = 'GET', body = null) {
 }
 
 /**
- * Shopify'da sipariş oluştur (ödeme iyzico'dan alındı)
+ * Create Shopify order (payment already captured by iyzico)
  */
 export async function createOrder({
     customerEmail,
@@ -73,11 +73,12 @@ export async function createOrder({
     shippingAddress,
     billingAddress,
     note = '',
+    noteAttributes = [],
     tags = [],
-    financialStatus = 'paid', // iyzico'dan ödeme alındı
+    financialStatus = 'paid', // payment captured by iyzico
     iyzicoPaymentId = '',
 }) {
-    // İsim parçalama
+    // Split full name into first/last
     const nameParts = customerName.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
@@ -88,13 +89,19 @@ export async function createOrder({
             financial_status: financialStatus,
             send_receipt: true,
             send_fulfillment_receipt: true,
-            note: note || `iyzico Abonelik Ödemesi - Payment ID: ${iyzicoPaymentId}`,
+            note: note || `iyzico Subscription Payment - Payment ID: ${iyzicoPaymentId}`,
             tags: ['abonelik', 'iyzico', ...tags].join(', '),
             line_items: lineItems.map(item => ({
                 variant_id: item.variantId,
                 quantity: item.quantity || 1,
                 price: item.price,
+                ...(item.properties && Object.keys(item.properties).length > 0
+                    ? { properties: Object.entries(item.properties).map(([name, value]) => ({ name, value: String(value ?? '') })) }
+                    : {}),
             })),
+            ...(Array.isArray(noteAttributes) && noteAttributes.length > 0
+                ? { note_attributes: noteAttributes.map((attr) => ({ name: String(attr.name || ''), value: String(attr.value || '') })) }
+                : {}),
             customer: {
                 first_name: firstName,
                 last_name: lastName,
@@ -132,7 +139,7 @@ export async function createOrder({
 }
 
 /**
- * Shopify'dan ürünleri çek
+ * Fetch products from Shopify
  */
 export async function getProducts() {
     const result = await shopifyREST('/products.json?status=active&limit=50');
@@ -140,7 +147,7 @@ export async function getProducts() {
 }
 
 /**
- * Shopify'dan belirli bir ürünü çek
+ * Fetch single product from Shopify
  */
 export async function getProduct(productId) {
     const result = await shopifyREST(`/products/${productId}.json`);
@@ -148,7 +155,7 @@ export async function getProduct(productId) {
 }
 
 /**
- * Shopify'dan müşteriyi e-posta ile bul
+ * Find customer by email
  */
 export async function findCustomerByEmail(email) {
     const result = await shopifyREST(`/customers/search.json?query=email:${encodeURIComponent(email)}`);
@@ -156,7 +163,7 @@ export async function findCustomerByEmail(email) {
 }
 
 /**
- * Shopify'da müşteri oluştur
+ * Create customer in Shopify
  */
 export async function createCustomer({ email, firstName, lastName, phone }) {
     const result = await shopifyREST('/customers.json', 'POST', {
@@ -173,3 +180,4 @@ export async function createCustomer({ email, firstName, lastName, phone }) {
 }
 
 export { shopifyGraphQL, shopifyREST };
+

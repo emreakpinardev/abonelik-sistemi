@@ -80,8 +80,8 @@ function normalizeFrequencyForIyzicoLive(freq) {
   const iyzicoBaseUrl = String(process.env.IYZICO_BASE_URL || '').toLowerCase();
   const isSandbox = iyzicoBaseUrl.includes('sandbox');
 
-  // iyzico canlı ortamında minutely planlar stabil çalışmıyor.
-  // minute planı sandbox dışında haftalık plana düşürüyoruz.
+  // iyzico live environment has instability with minutely plans.
+  // outside sandbox, degrade minute plans to weekly.
   if (unit === 'minute' && !isSandbox) {
     return `${Math.max(1, Math.ceil(count / 10080))}_week`;
   }
@@ -93,6 +93,57 @@ function firstCsvValue(value) {
   return String(value || '')
     .split(',')[0]
     .trim();
+}
+
+function extractDeliveryInfoFromCartItems(cartItems = []) {
+  const result = {
+    deliveryDate: '',
+    deliveryDay: '',
+    deliveryDayName: '',
+  };
+
+  if (!Array.isArray(cartItems)) return result;
+
+  const normalizeKey = (value) =>
+    String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/\u0131/g, 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  for (const item of cartItems) {
+    const props = item?.properties || {};
+    const entries = Object.entries(props);
+    for (const [rawKey, rawValue] of entries) {
+      const key = normalizeKey(rawKey);
+      const value = String(rawValue || '').trim();
+      if (!value) continue;
+
+      if (
+        !result.deliveryDate &&
+        (key === 'delivery date' ||
+          key === 'delivery_date' ||
+          key === 'teslimat tarihi' ||
+          key === 'teslimat_tarihi')
+      ) {
+        result.deliveryDate = value;
+      }
+
+      if (!result.deliveryDay && (key === 'delivery day' || key === 'delivery_day')) {
+        result.deliveryDay = value;
+      }
+
+      if (
+        !result.deliveryDayName &&
+        (key === 'teslimat gunu' || key === 'teslimat_gunu')
+      ) {
+        result.deliveryDayName = value;
+      }
+    }
+  }
+
+  return result;
 }
 
 function toIyzicoPaymentInterval(interval, intervalCount, { allowMinutely = false } = {}) {
@@ -125,7 +176,7 @@ function parseAmount(value) {
 
   let normalized = raw
     .replace(/\s+/g, '')
-    .replace(/₺/g, '')
+    .replace(/\u20BA/g, '')
     .replace(/TL/gi, '')
     .replace(/[^0-9,.-]/g, '');
 
@@ -313,6 +364,7 @@ export async function POST(request) {
       customerIdentityNumber,
     } = body;
     const hasSubscriptionSignalsInCart = detectSubscriptionFromCartItems(cartItems);
+    const deliveryInfo = extractDeliveryInfoFromCartItems(cartItems);
     const type = shouldForceSubscriptionFlow({
       type: rawType,
       planId,
@@ -443,7 +495,13 @@ export async function POST(request) {
         conversationId: `sub_checkout_${subscription.id}`,
         pricingPlanReferenceCode,
         subscriptionInitialStatus: 'ACTIVE',
-        callbackUrl: `${appUrl}/api/iyzico/callback?subscriptionId=${subscription.id}`,
+        callbackUrl: (() => {
+          const callbackParams = new URLSearchParams({ subscriptionId: subscription.id });
+          if (deliveryInfo.deliveryDate) callbackParams.set('deliveryDate', deliveryInfo.deliveryDate);
+          if (deliveryInfo.deliveryDay) callbackParams.set('deliveryDay', deliveryInfo.deliveryDay);
+          if (deliveryInfo.deliveryDayName) callbackParams.set('deliveryDayName', deliveryInfo.deliveryDayName);
+          return `${appUrl}/api/iyzico/callback?${callbackParams.toString()}`;
+        })(),
         customer: {
           name: customerName,
           surname: customerName,
