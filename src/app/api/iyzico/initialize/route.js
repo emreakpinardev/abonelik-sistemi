@@ -71,6 +71,24 @@ function parseFrequency(freq) {
   return { interval, intervalCount };
 }
 
+function normalizeFrequencyForIyzicoLive(freq) {
+  const raw = String(freq || '').trim().toLowerCase();
+  const m = raw.match(/^(\d+)_(minute|week|month|day)$/);
+  if (!m) return raw;
+  const count = Math.max(1, Number.parseInt(m[1], 10) || 1);
+  const unit = m[2];
+  const iyzicoBaseUrl = String(process.env.IYZICO_BASE_URL || '').toLowerCase();
+  const isSandbox = iyzicoBaseUrl.includes('sandbox');
+
+  // iyzico canlı ortamında minutely planlar stabil çalışmıyor.
+  // minute planı sandbox dışında haftalık plana düşürüyoruz.
+  if (unit === 'minute' && !isSandbox) {
+    return `${Math.max(1, Math.ceil(count / 10080))}_week`;
+  }
+
+  return `${count}_${unit}`;
+}
+
 function firstCsvValue(value) {
   return String(value || '')
     .split(',')[0]
@@ -303,11 +321,13 @@ export async function POST(request) {
     })
       ? 'subscription'
       : 'single';
+    const normalizedSubscriptionFrequency = normalizeFrequencyForIyzicoLive(subscriptionFrequency);
     console.info('[iyzico/initialize] flow decision', {
       rawType,
       resolvedType: type,
       planId: planId || null,
       subscriptionFrequency: subscriptionFrequency || null,
+      normalizedSubscriptionFrequency: normalizedSubscriptionFrequency || null,
       hasSubscriptionSignalsInCart,
       cartItemsCount: Array.isArray(cartItems) ? cartItems.length : 0,
     });
@@ -321,7 +341,7 @@ export async function POST(request) {
       let plan = null;
       const requestedPlanPrice = getRequestedPlanPrice(productPrice, cartItems);
 
-      const { interval, intervalCount } = parseFrequency(subscriptionFrequency);
+      const { interval, intervalCount } = parseFrequency(normalizedSubscriptionFrequency);
       const firstItem = Array.isArray(cartItems) && cartItems.length > 0 ? cartItems[0] : null;
       const normalizedProductId = firstItem?.id ? String(firstItem.id) : firstCsvValue(productId);
       const normalizedVariantId = firstItem?.variant_id ? String(firstItem.variant_id) : firstCsvValue(variantId);
