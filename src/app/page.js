@@ -104,7 +104,7 @@ export default function AdminDashboard() {
 
   async function fetchSubscriptions() {
     try {
-      const res = await fetch('/api/subscriptions');
+      const res = await fetch('/api/admin/subscriptions?status=ALL&limit=100');
       const data = await res.json();
       if (data.subscriptions) setSubscriptions(data.subscriptions);
     } catch (e) { console.error(e); }
