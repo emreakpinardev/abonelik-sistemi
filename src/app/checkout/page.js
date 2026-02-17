@@ -42,6 +42,40 @@ function formatCurrency(value) {
     return `${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
 }
 
+function repairMojibake(input) {
+    const text = String(input || '');
+    if (!text) return '';
+    if (!/[ÃÄÅÂ�]/.test(text)) return text;
+    try {
+        const bytes = Uint8Array.from(text, (ch) => ch.charCodeAt(0) & 0xff);
+        return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch (_) {
+        return text;
+    }
+}
+
+function decodeCartPayload(cartParam) {
+    if (!cartParam) return null;
+    const raw = decodeURIComponent(cartParam);
+
+    const tryParse = (decodedBase64) => {
+        try {
+            return JSON.parse(decodeURIComponent(decodedBase64));
+        } catch (_) {
+            return JSON.parse(decodedBase64);
+        }
+    };
+
+    try {
+        return tryParse(atob(raw));
+    } catch (_) {
+        const binary = atob(raw);
+        const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+        const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        return tryParse(utf8);
+    }
+}
+
 
 
 function Icon({ name, size = 20, className = '' }) {
@@ -84,7 +118,7 @@ export default function CheckoutPage() {
 
     function normalizeFrequencyInput(freq, label) {
         let normalizedFreq = typeof freq === 'string' ? freq : '';
-        let normalizedLabel = typeof label === 'string' ? label : '';
+        let normalizedLabel = repairMojibake(typeof label === 'string' ? label : '');
         const labelText = normalizedLabel.toLowerCase();
         const getSafeCount = (unit, rawCount) => {
             let count = parseInt(rawCount, 10) || 1;
@@ -187,7 +221,8 @@ export default function CheckoutPage() {
         if (cartParam) {
             // Base64 encoded cart data (from Shopify redirects)
             try {
-                const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
+                const decoded = decodeCartPayload(cartParam);
+                if (!decoded) throw new Error('Cart payload decode failed');
                 setCartData(decoded);
                 const inferredSubscription = detectSubscriptionFromItems(decoded.items || []);
                 if (decoded.purchase_type) {
@@ -353,7 +388,7 @@ export default function CheckoutPage() {
         if (!raw) return '';
         if (subscriptionFrequencyLabel) return `Abonelik - ${subscriptionFrequencyLabel}`;
         if (subscriptionFrequency) return `Abonelik - ${getFrequencyText()}`;
-        return raw;
+        return repairMojibake(raw);
     }
 
     function getNextPaymentDate() {
