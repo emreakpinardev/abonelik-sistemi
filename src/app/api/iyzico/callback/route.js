@@ -126,6 +126,52 @@ function extractDeliveryInfoFromConversationId(conversationId = '') {
   }
 }
 
+function parseSubscriptionCallbackToken(raw = '') {
+  const value = String(raw || '').trim();
+  if (!value) {
+    return {
+      subscriptionId: '',
+      deliveryInfo: { deliveryDate: '', deliveryDay: '', deliveryDayName: '' },
+    };
+  }
+
+  const marker = '__dlv_';
+  const idx = value.indexOf(marker);
+  if (idx < 0) {
+    return {
+      subscriptionId: value,
+      deliveryInfo: { deliveryDate: '', deliveryDay: '', deliveryDayName: '' },
+    };
+  }
+
+  const subscriptionId = value.slice(0, idx).trim();
+  const token = value.slice(idx + marker.length).trim();
+  if (!token) {
+    return {
+      subscriptionId,
+      deliveryInfo: { deliveryDate: '', deliveryDay: '', deliveryDayName: '' },
+    };
+  }
+
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const [deliveryDate = '', deliveryDay = '', deliveryDayName = ''] = decoded.split('~');
+    return {
+      subscriptionId,
+      deliveryInfo: {
+        deliveryDate: String(deliveryDate || '').trim(),
+        deliveryDay: String(deliveryDay || '').trim(),
+        deliveryDayName: String(deliveryDayName || '').trim(),
+      },
+    };
+  } catch (_) {
+    return {
+      subscriptionId,
+      deliveryInfo: { deliveryDate: '', deliveryDay: '', deliveryDayName: '' },
+    };
+  }
+}
+
 function buildDeliveryNote(deliveryInfo = {}) {
   const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
   const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
@@ -199,12 +245,15 @@ export async function POST(request) {
     const formData = await request.formData();
     const token = formData.get('token');
     const url = new URL(request.url);
-    const subscriptionId = url.searchParams.get('subscriptionId');
+    const subscriptionToken = url.searchParams.get('subscriptionId') || '';
+    const parsedSubscription = parseSubscriptionCallbackToken(subscriptionToken);
+    const subscriptionId = parsedSubscription.subscriptionId;
     let deliveryInfo = {
       deliveryDate: url.searchParams.get('deliveryDate') || '',
       deliveryDay: url.searchParams.get('deliveryDay') || '',
       deliveryDayName: url.searchParams.get('deliveryDayName') || '',
     };
+    deliveryInfo = mergeDeliveryInfo(deliveryInfo, parsedSubscription.deliveryInfo);
     const paymentType = url.searchParams.get('type');
     console.info('[iyzico/callback] incoming', {
       paymentType: paymentType || null,

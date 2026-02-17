@@ -540,13 +540,16 @@ export async function POST(request) {
       const conversationId = deliveryToken
         ? `sub_checkout_${subscription.id}__dlv_${deliveryToken}`
         : `sub_checkout_${subscription.id}`;
+      const subscriptionCallbackToken = deliveryToken
+        ? `${subscription.id}__dlv_${deliveryToken}`
+        : subscription.id;
 
       const subscriptionResult = await initializeSubscriptionCheckoutForm({
         conversationId,
         pricingPlanReferenceCode,
         subscriptionInitialStatus: 'ACTIVE',
         callbackUrl: (() => {
-          const callbackParams = new URLSearchParams({ subscriptionId: subscription.id });
+          const callbackParams = new URLSearchParams({ subscriptionId: subscriptionCallbackToken });
           if (deliveryInfo.deliveryDate) callbackParams.set('deliveryDate', deliveryInfo.deliveryDate);
           if (deliveryInfo.deliveryDay) callbackParams.set('deliveryDay', deliveryInfo.deliveryDay);
           if (deliveryInfo.deliveryDayName) callbackParams.set('deliveryDayName', deliveryInfo.deliveryDayName);
