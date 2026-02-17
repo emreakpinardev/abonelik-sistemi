@@ -66,6 +66,22 @@ export default function CheckoutPage() {
         city: '', state: '', zipCode: '', address: '',
     });
 
+    function detectSubscriptionFromItems(items = []) {
+        if (!Array.isArray(items) || items.length === 0) return false;
+        return items.some((item) => {
+            if (item?.selling_plan?.name) return true;
+            if (item?.selling_plan_allocation?.selling_plan?.name) return true;
+            const p = item?.properties || {};
+            return Boolean(
+                p._subscription ||
+                p._seal_subscription ||
+                p.shipping_interval_unit_type ||
+                p.shipping_interval_frequency ||
+                p['Purchase type'] === 'subscription'
+            );
+        });
+    }
+
     function normalizeFrequencyInput(freq, label) {
         let normalizedFreq = typeof freq === 'string' ? freq : '';
         let normalizedLabel = typeof label === 'string' ? label : '';
@@ -173,7 +189,13 @@ export default function CheckoutPage() {
             try {
                 const decoded = JSON.parse(decodeURIComponent(atob(decodeURIComponent(cartParam))));
                 setCartData(decoded);
-                if (decoded.purchase_type) setPurchaseType(decoded.purchase_type);
+                const inferredSubscription = detectSubscriptionFromItems(decoded.items || []);
+                if (decoded.purchase_type) {
+                    setPurchaseType(decoded.purchase_type);
+                }
+                if (inferredSubscription) {
+                    setPurchaseType('subscription');
+                }
                 if (decoded.subscription_frequency) {
                     const normalized = normalizeFrequencyInput(
                         decoded.subscription_frequency,
@@ -183,6 +205,13 @@ export default function CheckoutPage() {
                     setSubscriptionFrequencyLabel(normalized.label || '');
                 }
                 if (!decoded.subscription_frequency && decoded.purchase_type === 'subscription') {
+                    const fallback = deriveFrequencyFromItems(decoded.items || []);
+                    if (fallback.frequency) {
+                        setSubscriptionFrequency(fallback.frequency);
+                        setSubscriptionFrequencyLabel(fallback.label || '');
+                    }
+                }
+                if (!decoded.subscription_frequency && inferredSubscription) {
                     const fallback = deriveFrequencyFromItems(decoded.items || []);
                     if (fallback.frequency) {
                         setSubscriptionFrequency(fallback.frequency);

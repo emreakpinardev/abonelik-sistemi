@@ -36,3 +36,26 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
 Project note: subscription renewals are configured with Vercel Cron.
+
+## Manual webhook test
+
+Use this to test renewal/cancel/failure logic without waiting for real iyzico cycle:
+
+```bash
+npm run test:webhook -- --event success
+```
+
+Options:
+
+- `--event success|failure|cancel` (default: `success`)
+- `--subscription-id <uuid>`
+- `--subscription-ref <iyzico_ref>`
+- `--email <customer_email>`
+- `--url <app_url>` (default: `APP_URL` or `NEXT_PUBLIC_APP_URL` or `http://localhost:3000`)
+
+Examples:
+
+```bash
+npm run test:webhook -- --event failure --subscription-id 11111111-2222-3333-4444-555555555555
+npm run test:webhook -- --event cancel --email customer@example.com --url http://localhost:3000
+```
