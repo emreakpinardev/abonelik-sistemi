@@ -96,9 +96,22 @@ function buildDeliveryMeta(deliveryInfo = {}) {
   return { lineItemProperties, noteAttributes };
 }
 
+function buildDeliveryNote(deliveryInfo = {}) {
+  const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+
+  const parts = [];
+  if (deliveryDate) parts.push(`Delivery date: ${deliveryDate}`);
+  if (deliveryDayName) parts.push(`Teslimat Gunu: ${deliveryDayName}`);
+  if (deliveryDay) parts.push(`delivery_day: ${deliveryDay}`);
+  return parts.join(' | ');
+}
+
 async function createShopifyOrderForSubscription(subscription, paymentId, tags = [], deliveryInfo = {}) {
   if (!subscription?.plan?.shopifyVariantId) return null;
   const deliveryMeta = buildDeliveryMeta(deliveryInfo);
+  const deliveryNote = buildDeliveryNote(deliveryInfo);
 
   const shopifyOrder = await createOrder({
     customerEmail: subscription.customerEmail,
@@ -125,6 +138,9 @@ async function createShopifyOrderForSubscription(subscription, paymentId, tags =
           country: 'TR',
         }
       : null,
+    note: deliveryNote
+      ? `iyzico Subscription Payment - Payment ID: ${paymentId || ''} | ${deliveryNote}`
+      : undefined,
     noteAttributes: deliveryMeta.noteAttributes,
     tags,
     iyzicoPaymentId: paymentId || '',
