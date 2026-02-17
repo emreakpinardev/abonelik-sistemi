@@ -170,6 +170,15 @@ function mergeDeliveryInfo(primary = {}, fallback = {}) {
   };
 }
 
+function encodeDeliveryInfoForConversation(deliveryInfo = {}) {
+  const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = String(deliveryInfo.deliveryDayName || '').trim();
+  if (!deliveryDate && !deliveryDay && !deliveryDayName) return '';
+  const compact = `${deliveryDate}~${deliveryDay}~${deliveryDayName}`;
+  return Buffer.from(compact, 'utf8').toString('base64url');
+}
+
 function toIyzicoPaymentInterval(interval, intervalCount, { allowMinutely = false } = {}) {
   const count = Math.max(1, Number(intervalCount) || 1);
 
@@ -527,9 +536,13 @@ export async function POST(request) {
       });
 
       const { pricingPlanReferenceCode } = await ensureIyzicoPlanReferences(plan);
+      const deliveryToken = encodeDeliveryInfoForConversation(deliveryInfo);
+      const conversationId = deliveryToken
+        ? `sub_checkout_${subscription.id}__dlv_${deliveryToken}`
+        : `sub_checkout_${subscription.id}`;
 
       const subscriptionResult = await initializeSubscriptionCheckoutForm({
-        conversationId: `sub_checkout_${subscription.id}`,
+        conversationId,
         pricingPlanReferenceCode,
         subscriptionInitialStatus: 'ACTIVE',
         callbackUrl: (() => {

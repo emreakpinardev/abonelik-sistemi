@@ -96,6 +96,36 @@ function buildDeliveryMeta(deliveryInfo = {}) {
   return { lineItemProperties, noteAttributes };
 }
 
+function mergeDeliveryInfo(primary = {}, fallback = {}) {
+  return {
+    deliveryDate: String(primary.deliveryDate || fallback.deliveryDate || '').trim(),
+    deliveryDay: String(primary.deliveryDay || fallback.deliveryDay || '').trim(),
+    deliveryDayName: String(primary.deliveryDayName || fallback.deliveryDayName || '').trim(),
+  };
+}
+
+function extractDeliveryInfoFromConversationId(conversationId = '') {
+  const marker = '__dlv_';
+  const raw = String(conversationId || '');
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+
+  const token = raw.slice(idx + marker.length).trim();
+  if (!token) return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const [deliveryDate = '', deliveryDay = '', deliveryDayName = ''] = decoded.split('~');
+    return {
+      deliveryDate: String(deliveryDate || '').trim(),
+      deliveryDay: String(deliveryDay || '').trim(),
+      deliveryDayName: String(deliveryDayName || '').trim(),
+    };
+  } catch (_) {
+    return { deliveryDate: '', deliveryDay: '', deliveryDayName: '' };
+  }
+}
+
 function buildDeliveryNote(deliveryInfo = {}) {
   const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
   const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
@@ -170,7 +200,7 @@ export async function POST(request) {
     const token = formData.get('token');
     const url = new URL(request.url);
     const subscriptionId = url.searchParams.get('subscriptionId');
-    const deliveryInfo = {
+    let deliveryInfo = {
       deliveryDate: url.searchParams.get('deliveryDate') || '',
       deliveryDay: url.searchParams.get('deliveryDay') || '',
       deliveryDayName: url.searchParams.get('deliveryDayName') || '',
@@ -272,6 +302,12 @@ export async function POST(request) {
         }
       }
     }
+    deliveryInfo = mergeDeliveryInfo(
+      deliveryInfo,
+      extractDeliveryInfoFromConversationId(
+        subscriptionResult?.conversationId || subscriptionResult?.data?.conversationId || ''
+      )
+    );
 
     if (subscriptionResult.status !== 'success') {
       if (isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
