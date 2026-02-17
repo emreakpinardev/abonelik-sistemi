@@ -262,24 +262,86 @@ export async function GET() {
   }
 
   function interceptCheckout() {
+    function isNativeCheckoutAction(action) {
+      var raw = String(action || '').trim();
+      if (!raw) return false;
+      try {
+        var u = new URL(raw, window.location.origin);
+        return u.pathname === '/checkout' || u.pathname.indexOf('/checkout/') === 0;
+      } catch (_) {
+        return raw.indexOf('/checkout') !== -1;
+      }
+    }
+
+    function neutralizeNativeCheckoutTargets(root) {
+      var scope = root && root.querySelectorAll ? root : document;
+      try {
+        scope.querySelectorAll('a[href*="/checkout"]').forEach(function(a) {
+          if (!a.dataset) return;
+          if (!a.dataset.originalCheckoutHref) {
+            a.dataset.originalCheckoutHref = a.getAttribute('href') || '';
+          }
+          a.setAttribute('href', '#');
+          a.setAttribute('data-shopify-checkout', 'blocked');
+        });
+
+        scope.querySelectorAll('form[action*="/checkout"]').forEach(function(f) {
+          if (!f.dataset) return;
+          if (!f.dataset.originalCheckoutAction) {
+            f.dataset.originalCheckoutAction = f.getAttribute('action') || '';
+          }
+          f.setAttribute('action', '#');
+          f.setAttribute('data-shopify-checkout-form', 'blocked');
+        });
+      } catch (_) {}
+    }
+
+    neutralizeNativeCheckoutTargets(document);
+
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        if (!m.addedNodes) return;
+        m.addedNodes.forEach(function(node) {
+          if (!node || node.nodeType !== 1) return;
+          neutralizeNativeCheckoutTargets(node);
+        });
+      });
+    });
+    observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+
     document.addEventListener('click', function(e) {
       var target = e.target.closest('a[href*="/checkout"], button[name="checkout"], input[name="checkout"], form[action*="/checkout"] button[type="submit"], .shopify-payment-button button, [data-shopify-checkout]');
       if (!target) return;
       e.preventDefault();
       e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
       redirectToOurCheckout();
       return false;
     }, true);
 
     document.addEventListener('submit', function(e) {
       var form = e.target;
-      if (form && form.action && form.action.indexOf('/checkout') !== -1) {
+      if (form && isNativeCheckoutAction(form.action || form.getAttribute('action'))) {
         e.preventDefault();
         e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
         redirectToOurCheckout();
         return false;
       }
     }, true);
+
+    var nativeSubmit = HTMLFormElement.prototype.submit;
+    if (!window.__customCheckoutSubmitPatched) {
+      window.__customCheckoutSubmitPatched = true;
+      HTMLFormElement.prototype.submit = function patchedSubmit() {
+        var action = this && (this.getAttribute('action') || this.action);
+        if (isNativeCheckoutAction(action)) {
+          redirectToOurCheckout();
+          return;
+        }
+        return nativeSubmit.apply(this, arguments);
+      };
+    }
   }
 
   // Remove legacy button injected by older script versions.
