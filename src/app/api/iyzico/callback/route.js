@@ -355,96 +355,15 @@ export async function POST(request) {
       )
     );
 
-    if (subscriptionResult.status !== 'success') {
-      if (isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
-        // Soft-success fallback:
-        // iyzico can approve payment but return transient system error on retrieve.
-        // Mark subscription active so it does not stay stuck in PENDING.
-        const now = new Date();
-        const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
-
-        await prisma.subscription.update({
-          where: { id: subscriptionId },
-          data: {
-            status: 'ACTIVE',
-            startDate: subscription.startDate || now,
-            currentPeriodStart: now,
-            currentPeriodEnd: nextPaymentDate,
-            nextPaymentDate,
-          },
-        });
-
-        const recentFailed = await prisma.payment.findFirst({
-          where: {
-            subscriptionId,
-            status: 'FAILED',
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        let ensuredPayment = null;
-        if (recentFailed) {
-          ensuredPayment = await prisma.payment.update({
-            where: { id: recentFailed.id },
-            data: {
-              status: 'SUCCESS',
-              errorMessage: null,
-            },
-          });
-        } else {
-          ensuredPayment = await prisma.payment.create({
-            data: {
-              amount: subscription.plan.price,
-              currency: subscription.plan.currency || 'TRY',
-              status: 'SUCCESS',
-              subscriptionId,
-            },
-          });
-        }
-
-        try {
-          const shopifyOrder = await createShopifyOrderForSubscription(
-            subscription,
-            ensuredPayment?.iyzicoPaymentId || '',
-            ['abonelik', 'ilk-odeme', 'soft-success'],
-            deliveryInfo
-          );
-          if (shopifyOrder && ensuredPayment?.id) {
-            await prisma.payment.update({
-              where: { id: ensuredPayment.id },
-              data: {
-                shopifyOrderId: shopifyOrder.id?.toString(),
-                shopifyOrderName: shopifyOrder.name,
-              },
-            });
-            await prisma.subscription.update({
-              where: { id: subscriptionId },
-              data: { lastShopifyOrderId: shopifyOrder.id?.toString() },
-            });
-          }
-        } catch (shopifyError) {
-          console.error('Shopify siparis olusturma hatasi (soft-success):', shopifyError);
-        }
-
-        return redirectToResult('success', 'Odeme alindi, dogrulama suruyor. Lutfen 1-2 dakika sonra hesabinizdan kontrol edin.');
-      }
-
-      await prisma.subscription.update({
-        where: { id: subscriptionId },
-        data: { status: 'PAYMENT_FAILED' },
+    const retrieveErrorMessage =
+      subscriptionResult.status === 'success'
+        ? ''
+        : subscriptionResult.errorMessage || 'iyzico retrieve checkout basarisiz';
+    if (retrieveErrorMessage) {
+      console.error('iyzico subscription checkout retrieve failed, running recovery flow:', {
+        subscriptionId,
+        message: retrieveErrorMessage,
       });
-
-      await prisma.payment.create({
-        data: {
-          amount: subscription.plan.price,
-          currency: subscription.plan.currency || 'TRY',
-          status: 'FAILED',
-          errorMessage: subscriptionResult.errorMessage || 'Abonelik olusturma basarisiz',
-          subscriptionId,
-        },
-      });
-
-      return redirectToResult('error', subscriptionResult.errorMessage || 'Abonelik olusturulamadi');
     }
 
     let resultData = subscriptionResult.data || {};
@@ -461,6 +380,7 @@ export async function POST(request) {
       resultData.customer?.customerReferenceCode ||
       subscriptionResult.customerReferenceCode ||
       subscriptionResult.customer?.referenceCode ||
+      subscription.iyzicoCustomerRef ||
       null;
 
     // iyzico bazen checkout retrieve cevabini success donse de subscription ref'i birkac saniye gecikmeli uretebiliyor.
@@ -652,6 +572,7 @@ export async function POST(request) {
     if (!iyzicoSubRef) {
       const missingRefError =
         createSubscriptionError ||
+        retrieveErrorMessage ||
         (!iyzicoCustomerRef
           ? 'customerReferenceCode alinmadi'
           : !subscription.plan?.iyzicoPricingPlanReferenceCode
@@ -762,4 +683,3 @@ export async function POST(request) {
     return redirectToResult('error', 'Bir hata olustu: ' + error.message);
   }
 }
-
