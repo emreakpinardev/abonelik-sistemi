@@ -5,6 +5,7 @@ import {
   createSubscriptionProduct,
   createSubscriptionPricingPlan,
   retrieveSubscriptionPricingPlan,
+  createSubscriptionCustomer,
 } from '@/lib/iyzico';
 import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
@@ -631,6 +632,70 @@ export async function POST(request) {
         : subscription.id;
 
       const { name: firstName, surname: lastName } = splitCustomerName(customerName);
+      const customerPayload = {
+        name: firstName,
+        surname: lastName,
+        email: customerEmail,
+        gsmNumber: customerPhone || '+905350000000',
+        identityNumber: customerIdentityNumber || '74300864791',
+        billingAddress: {
+          contactName: customerName,
+          city: customerCity || 'Istanbul',
+          country: 'Turkey',
+          address: customerAddressWithDistrict || 'Istanbul Turkiye',
+          zipCode: '34000',
+        },
+        shippingAddress: {
+          contactName: customerName,
+          city: customerCity || 'Istanbul',
+          country: 'Turkey',
+          address: customerAddressWithDistrict || 'Istanbul Turkiye',
+          zipCode: '34000',
+        },
+        ip: clientIp,
+      };
+
+      if (!subscription.iyzicoCustomerRef) {
+        try {
+          const customerCreateResult = await createSubscriptionCustomer({
+            conversationId: `sub_customer_init_${subscription.id}`,
+            customer: customerPayload,
+          });
+          if (customerCreateResult?.status === 'success') {
+            const createdCustomerData = customerCreateResult.data || {};
+            const initCustomerRef =
+              createdCustomerData.referenceCode ||
+              createdCustomerData.customerReferenceCode ||
+              createdCustomerData.customer?.referenceCode ||
+              customerCreateResult.referenceCode ||
+              customerCreateResult.customerReferenceCode ||
+              null;
+            if (initCustomerRef) {
+              await prisma.subscription.update({
+                where: { id: subscription.id },
+                data: { iyzicoCustomerRef: initCustomerRef },
+              });
+              subscription.iyzicoCustomerRef = initCustomerRef;
+              console.info('[iyzico/initialize] customer ref prepared for callback fallback', {
+                subscriptionId: subscription.id,
+                customerRefTail: String(initCustomerRef).slice(-8),
+              });
+            }
+          } else {
+            console.error('[iyzico/initialize] customer pre-create failed, continuing checkout init', {
+              subscriptionId: subscription.id,
+              errorMessage: customerCreateResult?.errorMessage || null,
+              errorCode: customerCreateResult?.errorCode || null,
+            });
+          }
+        } catch (customerCreateError) {
+          console.error('[iyzico/initialize] customer pre-create error, continuing checkout init', {
+            subscriptionId: subscription.id,
+            message: customerCreateError?.message || String(customerCreateError || ''),
+          });
+        }
+      }
+
       const subscriptionResult = await initializeSubscriptionCheckoutForm({
         conversationId,
         pricingPlanReferenceCode,
@@ -642,28 +707,8 @@ export async function POST(request) {
           if (deliveryInfo.deliveryDayName) callbackParams.set('deliveryDayName', deliveryInfo.deliveryDayName);
           return `${appUrl}/api/iyzico/callback?${callbackParams.toString()}`;
         })(),
-        customer: {
-          name: firstName,
-          surname: lastName,
-          email: customerEmail,
-          gsmNumber: customerPhone || '+905350000000',
-          identityNumber: customerIdentityNumber || '74300864791',
-          billingAddress: {
-            contactName: customerName,
-            city: customerCity || 'Istanbul',
-            country: 'Turkey',
-            address: customerAddressWithDistrict || 'Istanbul Turkiye',
-            zipCode: '34000',
-          },
-          shippingAddress: {
-            contactName: customerName,
-            city: customerCity || 'Istanbul',
-            country: 'Turkey',
-            address: customerAddressWithDistrict || 'Istanbul Turkiye',
-            zipCode: '34000',
-          },
-          ip: clientIp,
-        },
+        customer: customerPayload,
+
       });
 
       if (subscriptionResult.status === 'success') {
