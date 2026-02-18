@@ -604,8 +604,36 @@ export async function POST(request) {
         if (listedResult?.status === 'success') {
           const rows = listedResult?.data?.items || listedResult?.data || listedResult?.items || [];
           const normalized = Array.isArray(rows) ? rows : [];
-          const preferred = normalized.find((x) => ['ACTIVE', 'TRIALING', 'PENDING'].includes(String(x?.status || '').toUpperCase()));
-          const chosen = preferred || normalized[0] || null;
+          const allowedStatuses = new Set(['ACTIVE', 'TRIALING', 'PENDING']);
+
+          const scoped = normalized.filter((row) =>
+            allowedStatuses.has(String(row?.status || '').toUpperCase())
+          );
+
+          const byConversation = scoped.find((row) =>
+            [
+              row?.conversationId,
+              row?.initialConversationId,
+              row?.referenceCode,
+              row?.subscriptionReferenceCode,
+            ]
+              .map((v) => String(v || ''))
+              .some((v) => v.includes(subscriptionId))
+          );
+
+          const sortByRecent = (items) =>
+            [...items].sort((a, b) => {
+              const aTs =
+                Date.parse(a?.updatedDate || a?.updatedAt || a?.createdDate || a?.createdAt || a?.startDate || 0) || 0;
+              const bTs =
+                Date.parse(b?.updatedDate || b?.updatedAt || b?.createdDate || b?.createdAt || b?.startDate || 0) || 0;
+              return bTs - aTs;
+            });
+
+          const recentScoped = sortByRecent(scoped);
+          const recentAll = sortByRecent(normalized);
+          const chosen = byConversation || recentScoped[0] || recentAll[0] || null;
+
           if (chosen) {
             iyzicoSubRef =
               chosen.subscriptionReferenceCode ||
