@@ -363,6 +363,8 @@ export async function POST(request) {
       )
     );
 
+    const recoveryTrace = [];
+
     const retrieveErrorMessage =
       subscriptionResult.status === 'success'
         ? ''
@@ -394,8 +396,6 @@ export async function POST(request) {
       subscriptionResult.customer?.referenceCode ||
       subscription.iyzicoCustomerRef ||
       null;
-
-    const recoveryTrace = [];
 
     // iyzico bazen checkout retrieve cevabini success donse de subscription ref'i birkac saniye gecikmeli uretebiliyor.
     // Bu durumda hemen failure'a dusmeden yeniden sorgulayip referansi almaya calis.
