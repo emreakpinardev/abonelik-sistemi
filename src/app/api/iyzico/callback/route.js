@@ -368,6 +368,7 @@ export async function POST(request) {
         ? ''
         : subscriptionResult.errorMessage || 'iyzico retrieve checkout basarisiz';
     if (retrieveErrorMessage) {
+      recoveryTrace.push(`retrieve_failed:${retrieveErrorMessage}`);
       console.error('iyzico subscription checkout retrieve failed, running recovery flow:', {
         subscriptionId,
         message: retrieveErrorMessage,
@@ -393,6 +394,8 @@ export async function POST(request) {
       subscriptionResult.customer?.referenceCode ||
       subscription.iyzicoCustomerRef ||
       null;
+
+    const recoveryTrace = [];
 
     // iyzico bazen checkout retrieve cevabini success donse de subscription ref'i birkac saniye gecikmeli uretebiliyor.
     // Bu durumda hemen failure'a dusmeden yeniden sorgulayip referansi almaya calis.
@@ -476,6 +479,7 @@ export async function POST(request) {
             null;
         } else {
           createSubscriptionError = createdCustomer?.errorMessage || 'iyzico customer create failed';
+          recoveryTrace.push(`customer_create_failed:${createSubscriptionError}`);
           console.error(
             'iyzico customer create after checkout failed:',
             JSON.stringify(createdCustomer, null, 2)
@@ -483,11 +487,12 @@ export async function POST(request) {
         }
       } catch (customerError) {
         createSubscriptionError = customerError?.message || 'iyzico customer create unexpected error';
+        recoveryTrace.push(`customer_create_error:${createSubscriptionError}`);
         console.error('iyzico customer create after checkout error:', customerError);
       }
     }
 
-    if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+    if (!iyzicoSubRef && (iyzicoCustomerRef || subscription.plan?.iyzicoPricingPlanReferenceCode)) {
       console.info('[iyzico/callback] attempting subscription creation fallback', {
         subscriptionId,
         customerRefTail: String(iyzicoCustomerRef || '').slice(-8),
@@ -513,9 +518,11 @@ export async function POST(request) {
 
           if (!iyzicoSubRef) {
             createSubscriptionError = 'iyzico subscription create succeeded but subscriptionReferenceCode was empty';
+            recoveryTrace.push('subscription_create_success_but_ref_empty');
           }
         } else {
           createSubscriptionError = createResult?.errorMessage || 'iyzico subscription create failed';
+          recoveryTrace.push(`subscription_create_failed:${createSubscriptionError}`);
           console.error(
             'iyzico subscription create after checkout failed:',
             JSON.stringify(createResult, null, 2)
@@ -523,13 +530,14 @@ export async function POST(request) {
         }
       } catch (createError) {
         createSubscriptionError = createError?.message || 'iyzico subscription create unexpected error';
+        recoveryTrace.push(`subscription_create_error:${createSubscriptionError}`);
         console.error('iyzico subscription create after checkout error:', createError);
       }
     }
 
     // Son fallback: iyzico'da abonelik olusmus ama create/retrieve response'una yansimamis olabilir.
     // Musteri + pricing plan ile listeleyip aktif/olusturulmus en guncel abonelik referansini yakala.
-    if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+    if (!iyzicoSubRef && (iyzicoCustomerRef || subscription.plan?.iyzicoPricingPlanReferenceCode)) {
       console.info('[iyzico/callback] attempting subscription listing fallback', {
         subscriptionId,
         customerRefTail: String(iyzicoCustomerRef || '').slice(-8),
@@ -537,8 +545,8 @@ export async function POST(request) {
       });
       try {
         const listedResult = await retrieveIyzicoSubscriptions({
-          customerReferenceCode: iyzicoCustomerRef,
-          pricingPlanReferenceCode: subscription.plan.iyzicoPricingPlanReferenceCode,
+          customerReferenceCode: iyzicoCustomerRef || undefined,
+          pricingPlanReferenceCode: subscription.plan?.iyzicoPricingPlanReferenceCode || undefined,
           conversationId: `sub_list_${subscriptionId}`,
           page: 1,
           count: 50,
@@ -578,6 +586,7 @@ export async function POST(request) {
           const chosen = byConversation || recentScoped[0] || recentAll[0] || null;
 
           if (chosen) {
+            recoveryTrace.push('subscription_list_selected_row');
             console.info('[iyzico/callback] subscription listing fallback selected row', {
               subscriptionId,
               status: chosen.status || null,
@@ -591,9 +600,11 @@ export async function POST(request) {
               null;
           }
         } else {
+          recoveryTrace.push(`subscription_list_failed:${listedResult?.errorMessage || 'unknown'}`);
           console.error('iyzico subscription list fallback failed:', JSON.stringify(listedResult, null, 2));
         }
       } catch (listError) {
+        recoveryTrace.push(`subscription_list_error:${listError?.message || String(listError || '')}`);
         console.error('iyzico subscription list fallback error:', listError);
       }
     }
@@ -618,7 +629,7 @@ export async function POST(request) {
           amount: subscription.plan.price,
           currency: subscription.plan.currency || 'TRY',
           status: 'FAILED',
-          errorMessage: `Abonelik referansi olusmadi: ${missingRefError}`,
+          errorMessage: `Abonelik referansi olusmadi: ${missingRefError}${recoveryTrace.length ? ` | trace=${recoveryTrace.join(' > ')}` : ''}`,
           subscriptionId,
         },
       });
