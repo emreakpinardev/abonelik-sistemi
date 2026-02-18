@@ -253,6 +253,7 @@ export async function POST(request) {
     const subscriptionToken = url.searchParams.get('subscriptionId') || '';
     const parsedSubscription = parseSubscriptionCallbackToken(subscriptionToken);
     const subscriptionId = parsedSubscription.subscriptionId;
+    const checkoutConversationId = `sub_checkout_${subscriptionToken || parsedSubscription.subscriptionId || ''}`;
     let deliveryInfo = {
       deliveryDate: url.searchParams.get('deliveryDate') || '',
       deliveryDay: url.searchParams.get('deliveryDay') || '',
@@ -337,7 +338,7 @@ export async function POST(request) {
       return redirectToResult('error', 'Abonelik bulunamadi');
     }
 
-    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
     console.log('iyzico subscription callback result (attempt 1):', JSON.stringify(subscriptionResult, null, 2));
 
     // iyzico can transiently return "Sistem hatasi" even when payment is approved.
@@ -345,7 +346,7 @@ export async function POST(request) {
     if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
         console.log(
           `iyzico subscription callback retry result (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
@@ -402,7 +403,7 @@ export async function POST(request) {
     if (!iyzicoSubRef) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
         console.log(
           `iyzico subscription callback ref retry (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
