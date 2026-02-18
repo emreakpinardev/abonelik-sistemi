@@ -345,7 +345,7 @@ export async function POST(request) {
     if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
         console.log(
           `iyzico subscription callback retry result (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
@@ -371,6 +371,9 @@ export async function POST(request) {
       console.error('iyzico subscription checkout retrieve failed, running recovery flow:', {
         subscriptionId,
         message: retrieveErrorMessage,
+        tokenTail: String(token || '').slice(-8),
+        planRef: subscription.plan?.iyzicoPricingPlanReferenceCode || null,
+        hasStoredCustomerRef: Boolean(subscription.iyzicoCustomerRef),
       });
     }
 
@@ -432,6 +435,7 @@ export async function POST(request) {
     let createSubscriptionError = '';
 
     if (!iyzicoSubRef && !iyzicoCustomerRef) {
+      console.info('[iyzico/callback] attempting customer creation fallback', { subscriptionId });
       try {
         const { name: customerFirstName, surname: customerLastName } = splitCustomerName(subscription.customerName);
         const createdCustomer = await createSubscriptionCustomer({
@@ -484,6 +488,11 @@ export async function POST(request) {
     }
 
     if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+      console.info('[iyzico/callback] attempting subscription creation fallback', {
+        subscriptionId,
+        customerRefTail: String(iyzicoCustomerRef || '').slice(-8),
+        planRef: subscription.plan?.iyzicoPricingPlanReferenceCode || null,
+      });
       try {
         const createResult = await createIyzicoSubscription({
           pricingPlanReferenceCode: subscription.plan.iyzicoPricingPlanReferenceCode,
@@ -521,6 +530,11 @@ export async function POST(request) {
     // Son fallback: iyzico'da abonelik olusmus ama create/retrieve response'una yansimamis olabilir.
     // Musteri + pricing plan ile listeleyip aktif/olusturulmus en guncel abonelik referansini yakala.
     if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+      console.info('[iyzico/callback] attempting subscription listing fallback', {
+        subscriptionId,
+        customerRefTail: String(iyzicoCustomerRef || '').slice(-8),
+        planRef: subscription.plan?.iyzicoPricingPlanReferenceCode || null,
+      });
       try {
         const listedResult = await retrieveIyzicoSubscriptions({
           customerReferenceCode: iyzicoCustomerRef,
@@ -564,6 +578,12 @@ export async function POST(request) {
           const chosen = byConversation || recentScoped[0] || recentAll[0] || null;
 
           if (chosen) {
+            console.info('[iyzico/callback] subscription listing fallback selected row', {
+              subscriptionId,
+              status: chosen.status || null,
+              conversationId: chosen.conversationId || chosen.initialConversationId || null,
+              refTail: String(chosen.subscriptionReferenceCode || chosen.referenceCode || '').slice(-8),
+            });
             iyzicoSubRef =
               chosen.subscriptionReferenceCode ||
               chosen.referenceCode ||
@@ -603,8 +623,20 @@ export async function POST(request) {
         },
       });
 
+      console.error('[iyzico/callback] subscription reference recovery failed', {
+        subscriptionId,
+        missingRefError,
+        hasCustomerRef: Boolean(iyzicoCustomerRef),
+        planRef: subscription.plan?.iyzicoPricingPlanReferenceCode || null,
+      });
       return redirectToResult('error', 'Odeme alindi ancak iyzico abonelik olusmadi. Lutfen tekrar deneyin.');
     }
+
+    console.info('[iyzico/callback] subscription reference resolved', {
+      subscriptionId,
+      subRefTail: String(iyzicoSubRef || '').slice(-8),
+      customerRefTail: String(iyzicoCustomerRef || '').slice(-8),
+    });
 
     const now = new Date();
     const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);
