@@ -301,6 +301,30 @@ export async function createIyzicoSubscription({
     return await iyzicoRequest('/v2/subscription/subscriptions', body);
 }
 
+
+/**
+ * Subscription API: musteriye ait abonelikleri listele
+ */
+export async function retrieveIyzicoSubscriptions({
+    customerReferenceCode,
+    pricingPlanReferenceCode,
+    page = 1,
+    count = 50,
+    locale = 'tr',
+    conversationId,
+}) {
+    const query = new URLSearchParams();
+    if (locale) query.set('locale', locale);
+    if (conversationId) query.set('conversationId', conversationId);
+    if (customerReferenceCode) query.set('customerReferenceCode', customerReferenceCode);
+    if (pricingPlanReferenceCode) query.set('pricingPlanReferenceCode', pricingPlanReferenceCode);
+    query.set('page', String(Math.max(1, Number(page) || 1)));
+    query.set('count', String(Math.max(1, Number(count) || 50)));
+
+    const path = `/v2/subscription/subscriptions?${query.toString()}`;
+    return await iyzicoRequest(path, {}, 'GET');
+}
+
 /**
  * Subscription API: aboneligi iptal et
  */

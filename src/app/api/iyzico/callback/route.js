@@ -4,6 +4,7 @@ import {
   retrieveSubscriptionCheckoutForm,
   createIyzicoSubscription,
   createSubscriptionCustomer,
+  retrieveIyzicoSubscriptions,
   refundPayment,
 } from '@/lib/iyzico';
 import { createOrder } from '@/lib/shopify';
@@ -569,6 +570,7 @@ export async function POST(request) {
             createData.subscription?.referenceCode ||
             createData.subscription?.subscriptionReferenceCode ||
             createResult.subscriptionReferenceCode ||
+            createData.referenceCode ||
             null;
 
           if (!iyzicoSubRef) {
@@ -584,6 +586,38 @@ export async function POST(request) {
       } catch (createError) {
         createSubscriptionError = createError?.message || 'iyzico subscription create unexpected error';
         console.error('iyzico subscription create after checkout error:', createError);
+      }
+    }
+
+    // Son fallback: iyzico'da abonelik olusmus ama create/retrieve response'una yansimamis olabilir.
+    // Musteri + pricing plan ile listeleyip aktif/olusturulmus en guncel abonelik referansini yakala.
+    if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+      try {
+        const listedResult = await retrieveIyzicoSubscriptions({
+          customerReferenceCode: iyzicoCustomerRef,
+          pricingPlanReferenceCode: subscription.plan.iyzicoPricingPlanReferenceCode,
+          conversationId: `sub_list_${subscriptionId}`,
+          page: 1,
+          count: 50,
+        });
+
+        if (listedResult?.status === 'success') {
+          const rows = listedResult?.data?.items || listedResult?.data || listedResult?.items || [];
+          const normalized = Array.isArray(rows) ? rows : [];
+          const preferred = normalized.find((x) => ['ACTIVE', 'TRIALING', 'PENDING'].includes(String(x?.status || '').toUpperCase()));
+          const chosen = preferred || normalized[0] || null;
+          if (chosen) {
+            iyzicoSubRef =
+              chosen.subscriptionReferenceCode ||
+              chosen.referenceCode ||
+              chosen?.subscription?.referenceCode ||
+              null;
+          }
+        } else {
+          console.error('iyzico subscription list fallback failed:', JSON.stringify(listedResult, null, 2));
+        }
+      } catch (listError) {
+        console.error('iyzico subscription list fallback error:', listError);
       }
     }
 
