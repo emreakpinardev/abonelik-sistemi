@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   retrieveCheckoutForm,
   retrieveSubscriptionCheckoutForm,
+  createIyzicoSubscription,
   refundPayment,
 } from '@/lib/iyzico';
 import { createOrder } from '@/lib/shopify';
@@ -445,7 +446,7 @@ export async function POST(request) {
     }
 
     const resultData = subscriptionResult.data || {};
-    const iyzicoSubRef =
+    let iyzicoSubRef =
       resultData.subscriptionReferenceCode ||
       resultData.subscription?.referenceCode ||
       resultData.subscription?.subscriptionReferenceCode ||
@@ -459,6 +460,68 @@ export async function POST(request) {
       subscriptionResult.customerReferenceCode ||
       subscriptionResult.customer?.referenceCode ||
       null;
+
+    let createSubscriptionError = '';
+    if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
+      try {
+        const createResult = await createIyzicoSubscription({
+          pricingPlanReferenceCode: subscription.plan.iyzicoPricingPlanReferenceCode,
+          customerReferenceCode: iyzicoCustomerRef,
+          subscriptionInitialStatus: 'ACTIVE',
+          conversationId: `sub_create_${subscriptionId}`,
+        });
+
+        if (createResult?.status === 'success') {
+          const createData = createResult.data || {};
+          iyzicoSubRef =
+            createData.subscriptionReferenceCode ||
+            createData.subscription?.referenceCode ||
+            createData.subscription?.subscriptionReferenceCode ||
+            createResult.subscriptionReferenceCode ||
+            null;
+
+          if (!iyzicoSubRef) {
+            createSubscriptionError = 'iyzico subscription create succeeded but subscriptionReferenceCode was empty';
+          }
+        } else {
+          createSubscriptionError = createResult?.errorMessage || 'iyzico subscription create failed';
+          console.error(
+            'iyzico subscription create after checkout failed:',
+            JSON.stringify(createResult, null, 2)
+          );
+        }
+      } catch (createError) {
+        createSubscriptionError = createError?.message || 'iyzico subscription create unexpected error';
+        console.error('iyzico subscription create after checkout error:', createError);
+      }
+    }
+
+    if (!iyzicoSubRef) {
+      const missingRefError =
+        createSubscriptionError ||
+        (!iyzicoCustomerRef
+          ? 'customerReferenceCode alinmadi'
+          : !subscription.plan?.iyzicoPricingPlanReferenceCode
+            ? 'pricingPlanReferenceCode bulunamadi'
+            : 'subscriptionReferenceCode alinmadi');
+
+      await prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { status: 'PAYMENT_FAILED' },
+      });
+
+      await prisma.payment.create({
+        data: {
+          amount: subscription.plan.price,
+          currency: subscription.plan.currency || 'TRY',
+          status: 'FAILED',
+          errorMessage: `Abonelik referansi olusmadi: ${missingRefError}`,
+          subscriptionId,
+        },
+      });
+
+      return redirectToResult('error', 'Odeme alindi ancak iyzico abonelik olusmadi. Lutfen tekrar deneyin.');
+    }
 
     const now = new Date();
     const nextPaymentDate = calculateNextPaymentDate(now, subscription.plan.interval, subscription.plan.intervalCount);

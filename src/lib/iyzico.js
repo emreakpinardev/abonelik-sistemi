@@ -252,6 +252,34 @@ export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
 }
 
 /**
+ * Subscription API: checkout sonrasinda abonelik olustur
+ */
+export async function createIyzicoSubscription({
+    pricingPlanReferenceCode,
+    customerReferenceCode,
+    subscriptionInitialStatus = 'ACTIVE',
+    conversationId,
+    locale = 'tr',
+}) {
+    if (!pricingPlanReferenceCode) {
+        throw new Error('pricingPlanReferenceCode gerekli');
+    }
+    if (!customerReferenceCode) {
+        throw new Error('customerReferenceCode gerekli');
+    }
+
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_create_${Date.now()}`,
+        pricingPlanReferenceCode,
+        customerReferenceCode,
+        subscriptionInitialStatus,
+    };
+
+    return await iyzicoRequest('/v2/subscription/subscriptions', body);
+}
+
+/**
  * Subscription API: aboneligi iptal et
  */
 export async function cancelIyzicoSubscription({ subscriptionReferenceCode, reason, locale = 'tr', conversationId }) {
