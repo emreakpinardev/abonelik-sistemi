@@ -445,7 +445,7 @@ export async function POST(request) {
       return redirectToResult('error', subscriptionResult.errorMessage || 'Abonelik olusturulamadi');
     }
 
-    const resultData = subscriptionResult.data || {};
+    let resultData = subscriptionResult.data || {};
     let iyzicoSubRef =
       resultData.subscriptionReferenceCode ||
       resultData.subscription?.referenceCode ||
@@ -453,13 +453,51 @@ export async function POST(request) {
       subscriptionResult.subscriptionReferenceCode ||
       resultData.referenceCode ||
       null;
-    const iyzicoCustomerRef =
+    let iyzicoCustomerRef =
       resultData.customerReferenceCode ||
       resultData.customer?.referenceCode ||
       resultData.customer?.customerReferenceCode ||
       subscriptionResult.customerReferenceCode ||
       subscriptionResult.customer?.referenceCode ||
       null;
+
+    // iyzico bazen checkout retrieve cevabini success donse de subscription ref'i birkac saniye gecikmeli uretebiliyor.
+    // Bu durumda hemen failure'a dusmeden yeniden sorgulayip referansi almaya calis.
+    if (!iyzicoSubRef) {
+      for (let i = 0; i < 4; i += 1) {
+        await sleep(1500);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+        console.log(
+          `iyzico subscription callback ref retry (attempt ${i + 2}):`,
+          JSON.stringify(retryResult, null, 2)
+        );
+
+        if (retryResult?.status === 'success') {
+          subscriptionResult = retryResult;
+          resultData = retryResult.data || {};
+          iyzicoSubRef =
+            resultData.subscriptionReferenceCode ||
+            resultData.subscription?.referenceCode ||
+            resultData.subscription?.subscriptionReferenceCode ||
+            retryResult.subscriptionReferenceCode ||
+            resultData.referenceCode ||
+            iyzicoSubRef ||
+            null;
+          iyzicoCustomerRef =
+            resultData.customerReferenceCode ||
+            resultData.customer?.referenceCode ||
+            resultData.customer?.customerReferenceCode ||
+            retryResult.customerReferenceCode ||
+            retryResult.customer?.referenceCode ||
+            iyzicoCustomerRef ||
+            null;
+        }
+
+        if (iyzicoSubRef) {
+          break;
+        }
+      }
+    }
 
     let createSubscriptionError = '';
     if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
