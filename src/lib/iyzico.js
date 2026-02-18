@@ -251,6 +251,28 @@ export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
     return await iyzicoRequest(`/v2/subscription/checkoutform/${token}`, body);
 }
 
+
+/**
+ * Subscription API: musteri olustur
+ */
+export async function createSubscriptionCustomer({
+    customer,
+    conversationId,
+    locale = 'tr',
+}) {
+    if (!customer || typeof customer !== 'object') {
+        throw new Error('customer gerekli');
+    }
+
+    const body = {
+        locale,
+        conversationId: conversationId || `sub_customer_${Date.now()}`,
+        ...customer,
+    };
+
+    return await iyzicoRequest('/v2/subscription/customers', body);
+}
+
 /**
  * Subscription API: checkout sonrasinda abonelik olustur
  */

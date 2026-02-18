@@ -3,6 +3,7 @@ import {
   retrieveCheckoutForm,
   retrieveSubscriptionCheckoutForm,
   createIyzicoSubscription,
+  createSubscriptionCustomer,
   refundPayment,
 } from '@/lib/iyzico';
 import { createOrder } from '@/lib/shopify';
@@ -500,6 +501,58 @@ export async function POST(request) {
     }
 
     let createSubscriptionError = '';
+
+    if (!iyzicoSubRef && !iyzicoCustomerRef) {
+      try {
+        const createdCustomer = await createSubscriptionCustomer({
+          conversationId: `sub_customer_${subscriptionId}`,
+          customer: {
+            name: subscription.customerName || 'Musteri',
+            surname: subscription.customerName || 'Musteri',
+            email: subscription.customerEmail,
+            gsmNumber: subscription.customerPhone || '+905350000000',
+            identityNumber: '11111111111',
+            billingAddress: {
+              contactName: subscription.customerName || 'Musteri',
+              city: subscription.customerCity || 'Istanbul',
+              country: 'Turkey',
+              address: subscription.customerAddress || 'Istanbul Turkiye',
+              zipCode: '34000',
+            },
+            shippingAddress: {
+              contactName: subscription.customerName || 'Musteri',
+              city: subscription.customerCity || 'Istanbul',
+              country: 'Turkey',
+              address: subscription.customerAddress || 'Istanbul Turkiye',
+              zipCode: '34000',
+            },
+            ip: subscription.customerIp || '127.0.0.1',
+          },
+        });
+
+        if (createdCustomer?.status === 'success') {
+          const customerData = createdCustomer.data || {};
+          iyzicoCustomerRef =
+            customerData.referenceCode ||
+            customerData.customerReferenceCode ||
+            customerData.customer?.referenceCode ||
+            createdCustomer.referenceCode ||
+            createdCustomer.customerReferenceCode ||
+            iyzicoCustomerRef ||
+            null;
+        } else {
+          createSubscriptionError = createdCustomer?.errorMessage || 'iyzico customer create failed';
+          console.error(
+            'iyzico customer create after checkout failed:',
+            JSON.stringify(createdCustomer, null, 2)
+          );
+        }
+      } catch (customerError) {
+        createSubscriptionError = customerError?.message || 'iyzico customer create unexpected error';
+        console.error('iyzico customer create after checkout error:', customerError);
+      }
+    }
+
     if (!iyzicoSubRef && iyzicoCustomerRef && subscription.plan?.iyzicoPricingPlanReferenceCode) {
       try {
         const createResult = await createIyzicoSubscription({
@@ -569,7 +622,7 @@ export async function POST(request) {
       data: {
         status: 'ACTIVE',
         iyzicoSubscriptionRef: iyzicoSubRef || subscription.iyzicoSubscriptionRef,
-        iyzicoCustomerRef,
+        iyzicoCustomerRef: iyzicoCustomerRef || subscription.iyzicoCustomerRef,
         startDate: subscription.startDate || now,
         currentPeriodStart: now,
         currentPeriodEnd: nextPaymentDate,
