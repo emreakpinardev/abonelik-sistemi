@@ -45,6 +45,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+
+function splitCustomerName(fullName = '') {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  const name = parts[0] || 'Musteri';
+  const surname = parts.slice(1).join(' ') || 'Musteri';
+  return { name, surname };
+}
+
 function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   const next = new Date(fromDate);
 
@@ -425,14 +433,15 @@ export async function POST(request) {
 
     if (!iyzicoSubRef && !iyzicoCustomerRef) {
       try {
+        const { name: customerFirstName, surname: customerLastName } = splitCustomerName(subscription.customerName);
         const createdCustomer = await createSubscriptionCustomer({
           conversationId: `sub_customer_${subscriptionId}`,
           customer: {
-            name: subscription.customerName || 'Musteri',
-            surname: subscription.customerName || 'Musteri',
+            name: customerFirstName,
+            surname: customerLastName,
             email: subscription.customerEmail,
             gsmNumber: subscription.customerPhone || '+905350000000',
-            identityNumber: '11111111111',
+            identityNumber: '74300864791',
             billingAddress: {
               contactName: subscription.customerName || 'Musteri',
               city: subscription.customerCity || 'Istanbul',

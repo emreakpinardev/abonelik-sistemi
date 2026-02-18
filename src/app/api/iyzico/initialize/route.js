@@ -204,6 +204,13 @@ function toIyzicoPaymentInterval(interval, intervalCount, { allowMinutely = fals
   }
 }
 
+function splitCustomerName(fullName = '') {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  const name = parts[0] || 'Musteri';
+  const surname = parts.slice(1).join(' ') || 'Musteri';
+  return { name, surname };
+}
+
 function parseAmount(value) {
   const raw = String(value ?? '').trim();
   if (!raw) return 0;
@@ -623,6 +630,7 @@ export async function POST(request) {
         ? `${subscription.id}__dlv_${deliveryToken}`
         : subscription.id;
 
+      const { name: firstName, surname: lastName } = splitCustomerName(customerName);
       const subscriptionResult = await initializeSubscriptionCheckoutForm({
         conversationId,
         pricingPlanReferenceCode,
@@ -635,11 +643,11 @@ export async function POST(request) {
           return `${appUrl}/api/iyzico/callback?${callbackParams.toString()}`;
         })(),
         customer: {
-          name: customerName,
-          surname: customerName,
+          name: firstName,
+          surname: lastName,
           email: customerEmail,
           gsmNumber: customerPhone || '+905350000000',
-          identityNumber: customerIdentityNumber || '11111111111',
+          identityNumber: customerIdentityNumber || '74300864791',
           billingAddress: {
             contactName: customerName,
             city: customerCity || 'Istanbul',
