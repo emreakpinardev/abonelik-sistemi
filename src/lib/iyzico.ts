@@ -13,10 +13,8 @@ function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
 }
 
-function generateAuthorizationHeader(uri, body, randomString) {
-  // iyzico imza hesaplamasinda request body'si her zaman JSON string olarak kullanilir.
-  // GET isteklerinde de bos obje "{}" imzaya dahil edilmelidir.
-  const bodyString = JSON.stringify(body || {});
+function generateAuthorizationHeader(uri, body, randomString, { useEmptyBodyString = false } = {}) {
+  const bodyString = useEmptyBodyString ? '' : JSON.stringify(body || {});
 
   const signature = crypto
     .createHmac('sha256', SECRET_KEY)
@@ -32,16 +30,35 @@ function generateAuthorizationHeader(uri, body, randomString) {
   return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
 }
 
+async function parseIyzicoResponse(response) {
+  const raw = await response.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      status: 'failure',
+      errorCode: String(response.status || ''),
+      errorMessage: 'Non-JSON response from iyzico',
+      rawResponseSnippet: raw.slice(0, 500),
+    };
+  }
+}
+
+function isAuthTokenVerifyError(payload) {
+  const message = String(payload?.errorMessage || '').toLowerCase();
+  return String(payload?.errorCode || '') === '8' || message.includes('authentication token is not verified');
+}
+
 async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
   // İmza hesabi icin query string olmadan sadece base path kullaniliyor.
-  const pathForSignature = path.split('?')[0];
+  const basePath = path.split('?')[0];
 
   // GET isteklerinde imza bos body ile hesaplaniyor
   const authorization = generateAuthorizationHeader(
-    pathForSignature,
+    basePath,
     method === 'GET' ? {} : payload,
     randomString
   );
@@ -58,17 +75,43 @@ async function iyzicoRequest(path, body, method = 'POST') {
     ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
   });
 
-  const raw = await response.text();
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {
-      status: 'failure',
-      errorCode: String(response.status || ''),
-      errorMessage: 'Non-JSON response from iyzico',
-      rawResponseSnippet: raw.slice(0, 500),
-    };
+  let parsed = await parseIyzicoResponse(response);
+
+  // Some iyzico endpoints are strict about signature canonicalization.
+  // If auth token verification fails on GET, retry with alternate canonical forms.
+  if (method === 'GET' && isAuthTokenVerifyError(parsed)) {
+    const signatureVariants = [
+      { uri: path, useEmptyBodyString: false },
+      { uri: basePath, useEmptyBodyString: true },
+      { uri: path, useEmptyBodyString: true },
+    ];
+
+    for (const variant of signatureVariants) {
+      const retryRnd = generateRandomString();
+      const retryAuth = generateAuthorizationHeader(
+        variant.uri,
+        method === 'GET' ? {} : payload,
+        retryRnd,
+        { useEmptyBodyString: variant.useEmptyBodyString }
+      );
+
+      const retryResponse = await fetch(BASE_URL + path, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: retryAuth,
+          'x-iyzi-rnd': retryRnd,
+          'x-iyzi-client-version': 'iyzipay-node-2.0.65',
+        },
+      });
+
+      parsed = await parseIyzicoResponse(retryResponse);
+      if (!isAuthTokenVerifyError(parsed)) break;
+    }
   }
+
+  return parsed;
 }
 
 function formatPriceForIyzico(price) {
