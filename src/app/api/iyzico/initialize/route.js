@@ -628,7 +628,10 @@ export async function POST(request) {
         pricingPlanReferenceCode,
         subscriptionInitialStatus: 'ACTIVE',
         callbackUrl: (() => {
-          const callbackParams = new URLSearchParams({ subscriptionId: subscriptionCallbackToken });
+          const callbackParams = new URLSearchParams({
+            type: 'subscription',
+            subscriptionId: subscriptionCallbackToken,
+          });
           if (deliveryInfo.deliveryDate) callbackParams.set('deliveryDate', deliveryInfo.deliveryDate);
           if (deliveryInfo.deliveryDay) callbackParams.set('deliveryDay', deliveryInfo.deliveryDay);
           if (deliveryInfo.deliveryDayName) callbackParams.set('deliveryDayName', deliveryInfo.deliveryDayName);

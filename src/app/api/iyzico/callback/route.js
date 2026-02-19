@@ -259,8 +259,10 @@ export async function POST(request) {
     };
     deliveryInfo = mergeDeliveryInfo(deliveryInfo, parsedSubscription.deliveryInfo);
     const paymentType = url.searchParams.get('type');
+    const resolvedPaymentType = paymentType || (subscriptionId ? 'subscription' : null);
     console.info('[iyzico/callback] incoming', {
       paymentType: paymentType || null,
+      resolvedPaymentType,
       hasSubscriptionId: Boolean(subscriptionId),
       hasToken: Boolean(token),
     });
@@ -270,7 +272,7 @@ export async function POST(request) {
     }
 
     // One-time flow
-    if (paymentType === 'single') {
+    if (resolvedPaymentType === 'single') {
       const paymentResult = await retrieveCheckoutForm(token);
       console.log('iyzico single callback result:', JSON.stringify(paymentResult, null, 2));
 
@@ -282,7 +284,7 @@ export async function POST(request) {
     }
 
     // Legacy card update flow
-    if (paymentType === 'card_update') {
+    if (resolvedPaymentType === 'card_update') {
       const paymentResult = await retrieveCheckoutForm(token);
       console.log('iyzico card update callback result:', JSON.stringify(paymentResult, null, 2));
 
@@ -317,7 +319,7 @@ export async function POST(request) {
     }
 
     // Subscription API card update flow
-    if (paymentType === 'card_update_sub') {
+    if (resolvedPaymentType === 'card_update_sub') {
       // token exists => iyzico card update checkout completed and callback reached.
       return redirectToResult('success', 'Kart bilgileriniz guncellendi!');
     }
