@@ -13,6 +13,14 @@ function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
 }
 
+function shortHash(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
+}
+
+function shouldLogIyzicoDebug() {
+  return String(process.env.IYZICO_DEBUG_SIGNATURE || '').toLowerCase() === 'true';
+}
+
 function generateAuthorizationHeader(uri, bodyString, randomString) {
 
   const signature = crypto
@@ -57,6 +65,19 @@ async function iyzicoRequest(path, body, method = 'POST') {
     randomString
   );
 
+  if (shouldLogIyzicoDebug()) {
+    console.info('[iyzico/signature/debug] request', {
+      method,
+      path,
+      basePath,
+      hasQuery: path.includes('?'),
+      bodyMode: method === 'GET' ? 'empty-string' : 'json-string',
+      bodyHash: shortHash(bodyStringForSignature),
+      rndHash: shortHash(randomString),
+      authorizationPrefix: String(authorization || '').slice(0, 20),
+    });
+  }
+
   const response = await fetch(BASE_URL + path, {
     method,
     headers: {
@@ -69,7 +90,22 @@ async function iyzicoRequest(path, body, method = 'POST') {
     ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
   });
 
-  return parseIyzicoResponse(response);
+  const parsed = await parseIyzicoResponse(response);
+
+  if (shouldLogIyzicoDebug()) {
+    console.info('[iyzico/signature/debug] response', {
+      method,
+      path,
+      status: response.status,
+      iyzicoStatus: parsed?.status ?? null,
+      iyzicoErrorCode: parsed?.errorCode ?? null,
+      iyzicoErrorMessage: parsed?.errorMessage ?? null,
+      requestId: response.headers.get('x-request-id') || null,
+      conversationId: parsed?.conversationId || parsed?.data?.conversationId || null,
+    });
+  }
+
+  return parsed;
 }
 
 function formatPriceForIyzico(price) {
