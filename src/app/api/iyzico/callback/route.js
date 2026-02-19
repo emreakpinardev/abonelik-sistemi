@@ -236,9 +236,30 @@ function redirectToResult(status, message) {
  */
 export async function POST(request) {
   try {
+    const url = new URL(request.url);
+    const callbackPath = url.pathname;
+    const authorization = request.headers.get('authorization') || '';
+    const xIyziRnd = request.headers.get('x-iyzi-rnd') || '';
+
+    let rawBody = '';
+    try {
+      rawBody = await request.clone().text();
+    } catch (rawErr) {
+      console.error('[iyzico/callback] raw body read error:', rawErr);
+    }
+
+    console.info('[iyzico/callback] request debug', {
+      callbackPath,
+      fullUrl: request.url,
+      method: request.method,
+      xIyziRnd,
+      authorization,
+      headers: Object.fromEntries(request.headers.entries()),
+      rawBody,
+    });
+
     const formData = await request.formData();
     const token = formData.get('token');
-    const url = new URL(request.url);
     const subscriptionToken = url.searchParams.get('subscriptionId') || '';
     const parsedSubscription = parseSubscriptionCallbackToken(subscriptionToken);
     const subscriptionId = parsedSubscription.subscriptionId;
