@@ -246,9 +246,14 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
  * Subscription API: checkout sonucu al
  */
 export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
-    const body = { locale: 'tr' };
-    if (conversationId) body.conversationId = conversationId;
-    return await iyzicoRequest(`/v2/subscription/checkoutform/${token}`, body);
+    const query = new URLSearchParams({ locale: 'tr' });
+    if (conversationId) query.set('conversationId', conversationId);
+
+    return await iyzicoRequest(
+        `/v2/subscription/checkoutform/${token}?${query.toString()}`,
+        {},
+        'GET'
+    );
 }
 
 
