@@ -14,8 +14,9 @@ function generateRandomString() {
 }
 
 function generateAuthorizationHeader(uri, body, randomString) {
-  // GET istekleri icin body string'i bos olmali, POST icin JSON.stringify
-  const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
+  // iyzico imza hesaplamasinda request body'si her zaman JSON string olarak kullanilir.
+  // GET isteklerinde de bos obje "{}" imzaya dahil edilmelidir.
+  const bodyString = JSON.stringify(body || {});
 
   const signature = crypto
     .createHmac('sha256', SECRET_KEY)
@@ -35,10 +36,8 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
-  // İmza hesabi icin path query string ile birlikte kullanilmali.
-  // Ozellikle Subscription API GET endpoint'lerinde (checkoutform retrieve gibi)
-  // query parametreleri de imza dogrulamasina dahil ediliyor.
-  const pathForSignature = path;
+  // İmza hesabi icin query string olmadan sadece base path kullaniliyor.
+  const pathForSignature = path.split('?')[0];
 
   // GET isteklerinde imza bos body ile hesaplaniyor
   const authorization = generateAuthorizationHeader(
