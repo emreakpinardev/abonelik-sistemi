@@ -166,6 +166,16 @@ function parseSubscriptionCallbackToken(raw = '') {
   }
 }
 
+function buildSubscriptionConversationId(rawSubscriptionToken = '', fallbackSubscriptionId = '') {
+  const rawToken = String(rawSubscriptionToken || '').trim();
+  if (rawToken) {
+    return `sub_checkout_${rawToken}`;
+  }
+
+  const fallbackId = String(fallbackSubscriptionId || '').trim();
+  return fallbackId ? `sub_checkout_${fallbackId}` : null;
+}
+
 function buildDeliveryNote(deliveryInfo = {}) {
   const deliveryDate = String(deliveryInfo.deliveryDate || '').trim();
   const deliveryDay = String(deliveryInfo.deliveryDay || '').trim();
@@ -326,7 +336,8 @@ export async function POST(request) {
       return redirectToResult('error', 'Abonelik bulunamadi');
     }
 
-    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, `sub_checkout_${subscriptionId}`);
+    const callbackConversationId = buildSubscriptionConversationId(subscriptionToken, subscriptionId);
+    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, callbackConversationId);
     console.log('iyzico subscription callback result (attempt 1):', JSON.stringify(subscriptionResult, null, 2));
 
     // iyzico can transiently return "Sistem hatasi" even when payment is approved.
@@ -334,7 +345,7 @@ export async function POST(request) {
     if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token);
+        const retryResult = await retrieveSubscriptionCheckoutForm(token, callbackConversationId);
         console.log(
           `iyzico subscription callback retry result (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
@@ -546,4 +557,3 @@ export async function POST(request) {
     return redirectToResult('error', 'Bir hata olustu: ' + error.message);
   }
 }
-
