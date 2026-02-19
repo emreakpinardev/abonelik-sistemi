@@ -53,6 +53,13 @@ function splitCustomerName(fullName = '') {
   return { name, surname };
 }
 
+
+function firstCsvValue(value) {
+  return String(value || '')
+    .split(',')[0]
+    .trim();
+}
+
 function calculateNextPaymentDate(fromDate, interval, intervalCount = 1) {
   const next = new Date(fromDate);
 
@@ -189,6 +196,53 @@ function buildDeliveryNote(deliveryInfo = {}) {
   return parts.join(' | ');
 }
 
+function encodeDeliveryInfoForConversation(deliveryInfo = {}) {
+  const deliveryDate = firstCsvValue(deliveryInfo.deliveryDate || '').trim();
+  const deliveryDay = firstCsvValue(deliveryInfo.deliveryDay || '').trim();
+  const deliveryDayName = firstCsvValue(deliveryInfo.deliveryDayName || '').trim();
+
+  if (!deliveryDate && !deliveryDay && !deliveryDayName) return '';
+
+  const compact = `${deliveryDate}~${deliveryDay}~${deliveryDayName}`;
+  return Buffer.from(compact, 'utf8').toString('base64url');
+}
+
+function buildCheckoutConversationIdCandidates(subscriptionToken, subscriptionId, deliveryInfo = {}) {
+  const candidates = [];
+  const push = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized || candidates.includes(normalized)) return;
+    candidates.push(normalized);
+  };
+
+  push(`sub_checkout_${subscriptionToken || ''}`);
+  push(`sub_checkout_${subscriptionId || ''}`);
+
+  const deliveryToken = encodeDeliveryInfoForConversation(deliveryInfo);
+  if (deliveryToken && subscriptionId) {
+    push(`sub_checkout_${subscriptionId}__dlv_${deliveryToken}`);
+  }
+
+  return candidates;
+}
+
+async function retrieveSubscriptionCheckoutWithCandidates(token, conversationIdCandidates = []) {
+  let lastResult = null;
+  let usedConversationId = conversationIdCandidates[0] || '';
+
+  for (const candidate of conversationIdCandidates) {
+    usedConversationId = candidate;
+    const result = await retrieveSubscriptionCheckoutForm(token, candidate);
+    lastResult = result;
+    if (result?.status === 'success') return { result, usedConversationId };
+    if (!isSystemLevelIyzicoError(result?.errorMessage || '')) {
+      return { result, usedConversationId };
+    }
+  }
+
+  return { result: lastResult || { status: 'failure', errorMessage: 'iyzico retrieve response is empty' }, usedConversationId };
+}
+
 async function createShopifyOrderForSubscription(subscription, paymentId, tags = [], deliveryInfo = {}) {
   if (!subscription?.plan?.shopifyVariantId) return null;
   const deliveryMeta = buildDeliveryMeta(deliveryInfo);
@@ -253,13 +307,17 @@ export async function POST(request) {
     const subscriptionToken = url.searchParams.get('subscriptionId') || '';
     const parsedSubscription = parseSubscriptionCallbackToken(subscriptionToken);
     const subscriptionId = parsedSubscription.subscriptionId;
-    const checkoutConversationId = `sub_checkout_${subscriptionToken || parsedSubscription.subscriptionId || ''}`;
     let deliveryInfo = {
       deliveryDate: url.searchParams.get('deliveryDate') || '',
       deliveryDay: url.searchParams.get('deliveryDay') || '',
       deliveryDayName: url.searchParams.get('deliveryDayName') || '',
     };
     deliveryInfo = mergeDeliveryInfo(deliveryInfo, parsedSubscription.deliveryInfo);
+    const checkoutConversationIdCandidates = buildCheckoutConversationIdCandidates(
+      subscriptionToken,
+      parsedSubscription.subscriptionId,
+      deliveryInfo
+    );
     const paymentType = url.searchParams.get('type');
     console.info('[iyzico/callback] incoming', {
       paymentType: paymentType || null,
@@ -338,15 +396,24 @@ export async function POST(request) {
       return redirectToResult('error', 'Abonelik bulunamadi');
     }
 
-    let subscriptionResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
+    let { result: subscriptionResult, usedConversationId } = await retrieveSubscriptionCheckoutWithCandidates(
+      token,
+      checkoutConversationIdCandidates
+    );
     console.log('iyzico subscription callback result (attempt 1):', JSON.stringify(subscriptionResult, null, 2));
+    console.info('[iyzico/callback] retrieve attempt conversation candidates', {
+      candidates: checkoutConversationIdCandidates,
+      usedConversationId,
+    });
 
     // iyzico can transiently return "Sistem hatasi" even when payment is approved.
     // Retry several times before deciding failure to avoid false-negative statuses.
     if (subscriptionResult.status !== 'success' && isSystemLevelIyzicoError(subscriptionResult.errorMessage)) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
+        const retryResponse = await retrieveSubscriptionCheckoutWithCandidates(token, checkoutConversationIdCandidates);
+        const retryResult = retryResponse.result;
+        usedConversationId = retryResponse.usedConversationId || usedConversationId;
         console.log(
           `iyzico subscription callback retry result (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
@@ -403,7 +470,9 @@ export async function POST(request) {
     if (!iyzicoSubRef) {
       for (let i = 0; i < 4; i += 1) {
         await sleep(1500);
-        const retryResult = await retrieveSubscriptionCheckoutForm(token, checkoutConversationId);
+        const retryResponse = await retrieveSubscriptionCheckoutWithCandidates(token, checkoutConversationIdCandidates);
+        const retryResult = retryResponse.result;
+        usedConversationId = retryResponse.usedConversationId || usedConversationId;
         console.log(
           `iyzico subscription callback ref retry (attempt ${i + 2}):`,
           JSON.stringify(retryResult, null, 2)
