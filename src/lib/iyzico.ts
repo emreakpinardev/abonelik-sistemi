@@ -55,12 +55,12 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
-  // İmza hesabi icin query string olmadan sadece base path kullaniliyor.
-  const basePath = path.split('?')[0];
+  // IYZWSv2 imzasi, istek URI'sini query dahil canonical path olarak bekler.
+  const signaturePath = path;
   const bodyStringForSignature = method === 'GET' ? '' : JSON.stringify(payload);
 
   const authorization = generateAuthorizationHeader(
-    basePath,
+    signaturePath,
     bodyStringForSignature,
     randomString
   );
@@ -69,7 +69,7 @@ async function iyzicoRequest(path, body, method = 'POST') {
     console.info('[iyzico/signature/debug] request', {
       method,
       path,
-      basePath,
+      signaturePath,
       hasQuery: path.includes('?'),
       bodyMode: method === 'GET' ? 'empty-string' : 'json-string',
       bodyHash: shortHash(bodyStringForSignature),
@@ -301,13 +301,27 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
  * Imza hesabi da GET icin bos body ile yapiliyor.
  */
 export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
-  const normalizedToken = encodeURIComponent(String(token || '').trim());
-  if (!normalizedToken) {
+  const rawToken = String(token || '').trim();
+  if (!rawToken) {
     throw new Error('checkout token gerekli');
   }
-  const path = `/v2/subscription/checkoutform/${normalizedToken}`;
 
-  // GET request - body bos, imza bos string ile hesaplaniyor
+  // Callback body x-www-form-urlencoded oldugunda '+' karakteri bosa donebilir.
+  // Tokeni once normalize edip sonra path segmenti olarak guvenli encode ediyoruz.
+  const plusRestored = rawToken.replace(/\s+/g, '+');
+  let decodedToken = plusRestored;
+  try {
+    decodedToken = decodeURIComponent(plusRestored);
+  } catch {
+    decodedToken = plusRestored;
+  }
+
+  const normalizedToken = encodeURIComponent(decodedToken);
+  const query = new URLSearchParams({ locale: 'tr' });
+  if (conversationId) query.set('conversationId', String(conversationId));
+  const path = `/v2/subscription/checkoutform/${normalizedToken}?${query.toString()}`;
+
+  // GET request - body bos, imza bos string ile hesaplaniyor.
   return await iyzicoRequest(path, {}, 'GET');
 }
 
