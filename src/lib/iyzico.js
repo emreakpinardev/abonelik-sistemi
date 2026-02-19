@@ -248,7 +248,7 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
 export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
     const body = { locale: 'tr' };
     if (conversationId) body.conversationId = conversationId;
-    return await iyzicoRequest(`/v2/subscription/checkoutform/${token}`, body);
+    return await iyzicoRequest(`/v2/subscription/checkoutform/auth/detail`, body);
 }
 
 /**
