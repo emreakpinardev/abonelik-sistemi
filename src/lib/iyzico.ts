@@ -13,8 +13,7 @@ function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
 }
 
-function generateAuthorizationHeader(uri, body, randomString, { useEmptyBodyString = false } = {}) {
-  const bodyString = useEmptyBodyString ? '' : JSON.stringify(body || {});
+function generateAuthorizationHeader(uri, bodyString, randomString) {
 
   const signature = crypto
     .createHmac('sha256', SECRET_KEY)
@@ -44,22 +43,17 @@ async function parseIyzicoResponse(response) {
   }
 }
 
-function isAuthTokenVerifyError(payload) {
-  const message = String(payload?.errorMessage || '').toLowerCase();
-  return String(payload?.errorCode || '') === '8' || message.includes('authentication token is not verified');
-}
-
 async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
   // İmza hesabi icin query string olmadan sadece base path kullaniliyor.
   const basePath = path.split('?')[0];
+  const bodyStringForSignature = method === 'GET' ? '' : JSON.stringify(payload);
 
-  // GET isteklerinde imza bos body ile hesaplaniyor
   const authorization = generateAuthorizationHeader(
     basePath,
-    method === 'GET' ? {} : payload,
+    bodyStringForSignature,
     randomString
   );
 
@@ -75,43 +69,7 @@ async function iyzicoRequest(path, body, method = 'POST') {
     ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
   });
 
-  let parsed = await parseIyzicoResponse(response);
-
-  // Some iyzico endpoints are strict about signature canonicalization.
-  // If auth token verification fails on GET, retry with alternate canonical forms.
-  if (method === 'GET' && isAuthTokenVerifyError(parsed)) {
-    const signatureVariants = [
-      { uri: path, useEmptyBodyString: false },
-      { uri: basePath, useEmptyBodyString: true },
-      { uri: path, useEmptyBodyString: true },
-    ];
-
-    for (const variant of signatureVariants) {
-      const retryRnd = generateRandomString();
-      const retryAuth = generateAuthorizationHeader(
-        variant.uri,
-        method === 'GET' ? {} : payload,
-        retryRnd,
-        { useEmptyBodyString: variant.useEmptyBodyString }
-      );
-
-      const retryResponse = await fetch(BASE_URL + path, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: retryAuth,
-          'x-iyzi-rnd': retryRnd,
-          'x-iyzi-client-version': 'iyzipay-node-2.0.65',
-        },
-      });
-
-      parsed = await parseIyzicoResponse(retryResponse);
-      if (!isAuthTokenVerifyError(parsed)) break;
-    }
-  }
-
-  return parsed;
+  return parseIyzicoResponse(response);
 }
 
 function formatPriceForIyzico(price) {
@@ -307,9 +265,11 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
  * Imza hesabi da GET icin bos body ile yapiliyor.
  */
 export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
-  const queryParams = new URLSearchParams({ locale: 'tr' });
-  if (conversationId) queryParams.set('conversationId', conversationId);
-  const path = `/v2/subscription/checkoutform/${token}?${queryParams.toString()}`;
+  const normalizedToken = encodeURIComponent(String(token || '').trim());
+  if (!normalizedToken) {
+    throw new Error('checkout token gerekli');
+  }
+  const path = `/v2/subscription/checkoutform/${normalizedToken}`;
 
   // GET request - body bos, imza bos string ile hesaplaniyor
   return await iyzicoRequest(path, {}, 'GET');
