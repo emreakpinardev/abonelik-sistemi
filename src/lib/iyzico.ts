@@ -55,8 +55,8 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
-  // IYZWSv2 imzasi, istek URI'sini query dahil canonical path olarak bekler.
-  const signaturePath = path;
+  // IYZWSv2 imzasi icin query parametreleri haric tutulur.
+  const signaturePath = path.split('?')[0];
   const bodyStringForSignature = method === 'GET' ? '' : JSON.stringify(payload);
 
   const authorization = generateAuthorizationHeader(
@@ -317,9 +317,14 @@ export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
   }
 
   const normalizedToken = encodeURIComponent(decodedToken);
-  const query = new URLSearchParams({ locale: 'tr' });
-  if (conversationId) query.set('conversationId', String(conversationId));
-  const path = `/v2/subscription/checkoutform/${normalizedToken}?${query.toString()}`;
+  const path = `/v2/subscription/checkoutform/${normalizedToken}`;
+
+  if (shouldLogIyzicoDebug() && conversationId) {
+    console.info('[iyzico/signature/debug] retrieveSubscriptionCheckoutForm conversationId ignored for signature safety', {
+      conversationId,
+      path,
+    });
+  }
 
   // GET request - body bos, imza bos string ile hesaplaniyor.
   return await iyzicoRequest(path, {}, 'GET');
