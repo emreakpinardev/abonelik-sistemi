@@ -35,8 +35,10 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
-  // İmza hesabi icin query string olmadan sadece base path kullaniliyor
-  const pathForSignature = path.split('?')[0];
+  // İmza hesabi icin path query string ile birlikte kullanilmali.
+  // Ozellikle Subscription API GET endpoint'lerinde (checkoutform retrieve gibi)
+  // query parametreleri de imza dogrulamasina dahil ediliyor.
+  const pathForSignature = path;
 
   // GET isteklerinde imza bos body ile hesaplaniyor
   const authorization = generateAuthorizationHeader(
