@@ -5,9 +5,11 @@ import crypto from 'crypto';
  * Vercel serverless'ta sorunsuz calisir
  */
 
-const API_KEY = process.env.IYZICO_API_KEY;
-const SECRET_KEY = process.env.IYZICO_SECRET_KEY;
-const BASE_URL = process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com';
+// .trim() zorunlu: Vercel env var kopyalanirken basa/sona bosluk/newline eklenirse
+// HMAC imzasi bozulur ve iyzico errorCode:8 dondurur.
+const API_KEY = (process.env.IYZICO_API_KEY || '').trim();
+const SECRET_KEY = (process.env.IYZICO_SECRET_KEY || '').trim();
+const BASE_URL = (process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim();
 
 function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
