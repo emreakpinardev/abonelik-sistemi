@@ -12,9 +12,11 @@ function generateRandomString() {
 }
 
 function generateAuthorizationHeader(uri, body, randomString) {
+    const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
+    // IYZWSv2: HMAC-SHA256(secretKey, apiKey + randomKey + uri + bodyString)
     const signature = crypto
         .createHmac('sha256', SECRET_KEY)
-        .update(randomString + uri + JSON.stringify(body))
+        .update(API_KEY + randomString + uri + bodyString)
         .digest('hex');
     const authorizationParams = [
         'apiKey:' + API_KEY,
@@ -30,48 +32,48 @@ export async function GET() {
 
     const body = {
         locale: 'tr',
-        conversationId: 'test-123',
+        conversationId: 'test-' + Date.now(),
         price: '100.0',
         paidPrice: '100.0',
         currency: 'TRY',
-        basketId: 'test-basket-123',
-        paymentGroup: 'SUBSCRIPTION',
-        callbackUrl: appUrl + '/api/iyzico/callback',
+        basketId: 'test-basket-' + Date.now(),
+        paymentGroup: 'PRODUCT',
+        callbackUrl: appUrl + '/api/iyzico/callback?type=single',
         enabledInstallments: [1],
         buyer: {
             id: 'BY789',
-            name: 'John',
-            surname: 'Doe',
+            name: 'Test',
+            surname: 'Kullanici',
             gsmNumber: '+905350000000',
             email: 'test@test.com',
             identityNumber: '74300864791',
-            lastLoginDate: '2026-02-13 20:00:00',
-            registrationDate: '2026-02-13 20:00:00',
-            registrationAddress: 'Nidakule Goztepe, Merdivenkoy Mah. Bora Sok. No:1',
+            lastLoginDate: '2026-01-01 00:00:00',
+            registrationDate: '2026-01-01 00:00:00',
+            registrationAddress: 'Test Adres, Istanbul',
             ip: '85.34.78.112',
             city: 'Istanbul',
             country: 'Turkey',
-            zipCode: '34732',
+            zipCode: '34000',
         },
         shippingAddress: {
-            contactName: 'John Doe',
+            contactName: 'Test Kullanici',
             city: 'Istanbul',
             country: 'Turkey',
-            address: 'Nidakule Goztepe, Merdivenkoy Mah. Bora Sok. No:1',
-            zipCode: '34732',
+            address: 'Test Adres, Istanbul',
+            zipCode: '34000',
         },
         billingAddress: {
-            contactName: 'John Doe',
+            contactName: 'Test Kullanici',
             city: 'Istanbul',
             country: 'Turkey',
-            address: 'Nidakule Goztepe, Merdivenkoy Mah. Bora Sok. No:1',
-            zipCode: '34732',
+            address: 'Test Adres, Istanbul',
+            zipCode: '34000',
         },
         basketItems: [
             {
                 id: 'BI101',
-                name: 'Test Abonelik',
-                category1: 'Abonelik',
+                name: 'Test Urun',
+                category1: 'Urun',
                 itemType: 'VIRTUAL',
                 price: '100.0',
             },
@@ -81,27 +83,38 @@ export async function GET() {
     const randomString = generateRandomString();
     const authorization = generateAuthorizationHeader(path, body, randomString);
 
-    const response = await fetch(BASE_URL + path, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authorization,
-            'x-iyzi-rnd': randomString,
-            'x-iyzi-client-version': 'iyzipay-node-2.0.65',
-        },
-        body: JSON.stringify(body),
-    });
-
-    const result = await response.json();
+    let iyzicoResponse = null;
+    let iyzicoError = null;
+    let httpStatus = null;
+    try {
+        const response = await fetch(BASE_URL + path, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authorization,
+                'x-iyzi-rnd': randomString,
+                'x-iyzi-client-version': 'iyzipay-node-2.0.65',
+            },
+            body: JSON.stringify(body),
+        });
+        httpStatus = response.status;
+        const raw = await response.text();
+        try { iyzicoResponse = JSON.parse(raw); } catch { iyzicoResponse = raw; }
+    } catch (err) {
+        iyzicoError = err.message;
+    }
 
     return NextResponse.json({
-        requestSent: body,
-        iyzicoResponse: result,
+        iyzicoResponse,
+        iyzicoError,
+        httpStatus,
         config: {
             baseUrl: BASE_URL,
             apiKeyPresent: !!API_KEY,
+            apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
             secretKeyPresent: !!SECRET_KEY,
+            secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
         },
     });
 }
