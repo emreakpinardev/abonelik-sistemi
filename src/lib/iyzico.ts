@@ -33,29 +33,49 @@ function generateAuthorizationHeader(uri, body, randomString) {
   return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
 }
 
+/**
+ * iyzico /v2/subscription/ endpoint'leri Basic Auth bekler.
+ * Diger endpoint'ler IYZWSv2 bekler.
+ */
+function getAuthorizationHeader(path, body, method, randomString) {
+  const isSubscriptionV2 = path.startsWith('/v2/');
+
+  if (isSubscriptionV2) {
+    // Basic Auth: base64(apiKey:secretKey)
+    const credentials = Buffer.from(`${API_KEY}:${SECRET_KEY}`).toString('base64');
+    return { authorization: `Basic ${credentials}`, useRnd: false };
+  }
+
+  // IYZWSv2 auth (standart odeme endpointleri)
+  const pathForSignature = path.split('?')[0];
+  const authorization = generateAuthorizationHeader(
+    pathForSignature,
+    method === 'GET' ? {} : (body || {}),
+    randomString
+  );
+  return { authorization, useRnd: true };
+}
+
 async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
 
-  // İmza hesabi icin query string olmadan sadece base path kullaniliyor
-  const pathForSignature = path.split('?')[0];
+  const { authorization, useRnd } = getAuthorizationHeader(path, payload, method, randomString);
 
-  // GET isteklerinde imza bos body ile hesaplaniyor
-  const authorization = generateAuthorizationHeader(
-    pathForSignature,
-    method === 'GET' ? {} : payload,
-    randomString
-  );
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: authorization,
+  };
+
+  if (useRnd) {
+    headers['x-iyzi-rnd'] = randomString;
+    headers['x-iyzi-client-version'] = 'iyzipay-node-2.0.65';
+  }
 
   const response = await fetch(BASE_URL + path, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: authorization,
-      'x-iyzi-rnd': randomString,
-      'x-iyzi-client-version': 'iyzipay-node-2.0.65',
-    },
+    headers,
     ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
   });
 
