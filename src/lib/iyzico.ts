@@ -257,18 +257,17 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
 }
 
 /**
- * Subscription API: checkout sonucu al
- * iyzico subscription checkout retrieve endpoint POST kabul eder,
- * token URL'de degil body'de gidecek.
+ * Subscription API: checkout sonucu al (GET)
+ * GET /v2/subscription/checkoutform/{token}
+ * Not: imza path'i token dahil tam yol ile hesaplaniyor, body bos.
  */
 export async function retrieveSubscriptionCheckoutForm(token: string, conversationId?: string) {
-  const body: any = {
-    locale: 'tr',
-    token,
-  };
-  if (conversationId) body.conversationId = conversationId;
+  const queryParams = new URLSearchParams({ locale: 'tr' });
+  if (conversationId) queryParams.set('conversationId', conversationId);
+  const path = `/v2/subscription/checkoutform/${token}?${queryParams.toString()}`;
 
-  return await iyzicoRequest('/v2/subscription/checkoutform/retrieve', body);
+  // GET icin body bos, imza: randomString + path_without_query + ''
+  return await iyzicoRequest(path, {}, 'GET');
 }
 
 /**
