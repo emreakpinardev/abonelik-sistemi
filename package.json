@@ -1,0 +1,26 @@
+{
+  "name": "shopify",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "test:webhook": "node scripts/test-webhook.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "@shopify/app-bridge-react": "^4.2.10",
+    "@shopify/app-bridge-types": "^0.7.0",
+    "@shopify/app-bridge-utils": "^3.5.1",
+    "iyzipay": "^2.0.65",
+    "next": "16.1.6",
+    "postman-request": "^2.88.1-postman.48",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.2"
+  }
+}
