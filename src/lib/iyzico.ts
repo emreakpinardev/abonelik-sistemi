@@ -1,100 +1,28 @@
-import crypto from 'crypto';
-
 /**
- * iyzico REST API client - native fetch ile (npm paketi olmadan)
- * Vercel serverless'ta sorunsuz calisir
+ * iyzico islemleri - resmi iyzipay npm paketi kullanilarak
+ * Manuel imza/auth hesabi yerine SDK kullanilir, boylece signature hatalari engellenir.
  */
+// @ts-ignore - iyzipay resmi SDK, TS tipi yok
+const Iyzipay = require('iyzipay');
 
-// .trim() zorunlu: Vercel env var kopyalanirken basa/sona bosluk/newline eklenirse
-// HMAC imzasi bozulur ve iyzico errorCode:8 dondurur.
-const API_KEY = (process.env.IYZICO_API_KEY || '').trim();
-const SECRET_KEY = (process.env.IYZICO_SECRET_KEY || '').trim();
-const BASE_URL = (process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim();
+const iyzipay = new Iyzipay({
+  apiKey: (process.env.IYZICO_API_KEY || '').trim(),
+  secretKey: (process.env.IYZICO_SECRET_KEY || '').trim(),
+  uri: (process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim(),
+});
 
-function generateRandomString() {
-  return Date.now().toString() + Math.random().toString(36).slice(2, 10);
-}
-
-function generateAuthorizationHeader(uri, body, randomString) {
-  // GET istekleri icin body string'i bos olmali, POST icin JSON.stringify
-  const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
-
-  // iyzico IYZWSv2: imza = HMAC-SHA256(secretKey, apiKey + randomKey + uri + bodyString)
-  // apiKey hash girdisine dahil edilmezse "authorization" (auth token) hatasi aliniyor.
-  const signature = crypto
-    .createHmac('sha256', SECRET_KEY)
-    .update(API_KEY + randomString + uri + bodyString)
-    .digest('hex');
-
-  const authorizationParams = [
-    'apiKey:' + API_KEY,
-    'randomKey:' + randomString,
-    'signature:' + signature,
-  ];
-
-  return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
-}
-
-/**
- * Tum iyzico endpoint'leri IYZWSv2 auth kullanir.
- * imza = HMAC-SHA256(secretKey, apiKey + randomKey + uri + bodyString)
- */
-async function iyzicoRequest(path, body, method = 'POST') {
-  const randomString = generateRandomString();
-  const payload = body || {};
-
-  const pathForSignature = path.split('?')[0];
-  const authorization = generateAuthorizationHeader(
-    pathForSignature,
-    method === 'GET' ? {} : payload,
-    randomString
-  );
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    Authorization: authorization,
-    'x-iyzi-rnd': randomString,
-    'x-iyzi-client-version': 'iyzipay-node-2.0.65',
-  };
-
-  console.info('[iyzico] REQUEST', {
-    url: BASE_URL + path,
-    method,
-    authType: 'IYZWSv2',
-    apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
-    secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
-    bodyKeys: Object.keys(payload),
+function sdkCall(method, request) {
+  return new Promise((resolve, reject) => {
+    method.call(method, request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
   });
-
-  const response = await fetch(BASE_URL + path, {
-    method,
-    headers,
-    ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
-  });
-
-  const raw = await response.text();
-  console.info('[iyzico] RESPONSE', {
-    url: BASE_URL + path,
-    httpStatus: response.status,
-    rawBody: raw.slice(0, 600),
-  });
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {
-      status: 'failure',
-      errorCode: String(response.status || ''),
-      errorMessage: 'Non-JSON response from iyzico',
-      rawResponseSnippet: raw.slice(0, 500),
-    };
-  }
 }
 
 function formatPriceForIyzico(price) {
-  const parsed = Number.parseFloat(price);
-  if (!Number.isFinite(parsed)) return '0.0';
+  const parsed = parseFloat(String(price ?? ''));
+  if (!isFinite(parsed)) return '0.0';
   const normalized = parsed.toString();
   return normalized.includes('.') ? normalized : `${normalized}.0`;
 }
@@ -119,7 +47,7 @@ export async function initializeCheckoutForm({
     price: formatPriceForIyzico(item.price),
   }));
 
-  const body = {
+  const request = {
     locale: 'tr',
     conversationId: basketId,
     price: formatPriceForIyzico(price),
@@ -135,33 +63,43 @@ export async function initializeCheckoutForm({
     basketItems: formattedItems,
   };
 
-  return await iyzicoRequest('/payment/iyzipos/checkoutform/initialize/auth/ecom', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.checkoutFormInitialize.create(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * iyzico checkout form sonucunu al (tek seferlik)
  */
 export async function retrieveCheckoutForm(token) {
-  const body = {
-    locale: 'tr',
-    token,
-  };
-
-  return await iyzicoRequest('/payment/iyzipos/checkoutform/auth/ecom/detail', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.checkoutForm.retrieve({ locale: 'tr', token }, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Subscription API: urun olustur
  */
 export async function createSubscriptionProduct({ name, description, locale = 'tr', conversationId }) {
-  const body = {
+  const request = {
     locale,
     conversationId: conversationId || `sub_product_${Date.now()}`,
     name: String(name || 'Abonelik Urunu').slice(0, 200),
     description: String(description || '').slice(0, 1000),
   };
 
-  return await iyzicoRequest('/v2/subscription/products', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionProduct.create(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
@@ -178,11 +116,9 @@ export async function createSubscriptionPricingPlan({
   locale = 'tr',
   conversationId,
 }) {
-  if (!productReferenceCode) {
-    throw new Error('productReferenceCode gerekli');
-  }
+  if (!productReferenceCode) throw new Error('productReferenceCode gerekli');
 
-  const body = {
+  const request = {
     locale,
     conversationId: conversationId || `sub_plan_${Date.now()}`,
     name: String(name || 'Abonelik Plani').slice(0, 200),
@@ -192,32 +128,35 @@ export async function createSubscriptionPricingPlan({
     paymentIntervalCount: Number(paymentIntervalCount) || 1,
     planPaymentType: 'RECURRING',
     trialPeriodDays: Number(trialPeriodDays) || 0,
+    productReferenceCode,
   };
 
-  return await iyzicoRequest(`/v2/subscription/products/${productReferenceCode}/pricing-plans`, body);
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionPricingPlan.create(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Subscription API: fiyat plani detayi getir
- * GET /v2/subscription/pricing-plans/{pricingPlanReferenceCode}
  */
-export async function retrieveSubscriptionPricingPlan({
-  pricingPlanReferenceCode,
-  locale = 'tr',
-  conversationId,
-}) {
-  if (!pricingPlanReferenceCode) {
-    throw new Error('pricingPlanReferenceCode gerekli');
-  }
+export async function retrieveSubscriptionPricingPlan({ pricingPlanReferenceCode, locale = 'tr', conversationId }) {
+  if (!pricingPlanReferenceCode) throw new Error('pricingPlanReferenceCode gerekli');
 
-  const query = new URLSearchParams();
-  if (locale) query.set('locale', locale);
-  if (conversationId) query.set('conversationId', conversationId);
-  const path =
-    `/v2/subscription/pricing-plans/${pricingPlanReferenceCode}` +
-    (query.toString() ? `?${query.toString()}` : '');
+  const request = {
+    locale,
+    conversationId: conversationId || `check_plan_${Date.now()}`,
+    pricingPlanReferenceCode,
+  };
 
-  return await iyzicoRequest(path, {}, 'GET');
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionPricingPlan.retrieve(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
@@ -231,7 +170,7 @@ export async function initializeSubscriptionCheckoutForm({
   callbackUrl,
   locale = 'tr',
 }) {
-  const body = {
+  const request = {
     locale,
     conversationId: conversationId || `sub_checkout_${Date.now()}`,
     pricingPlanReferenceCode,
@@ -240,7 +179,12 @@ export async function initializeSubscriptionCheckoutForm({
     callbackUrl,
   };
 
-  return await iyzicoRequest('/v2/subscription/checkoutform/initialize', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionCheckoutForm.initialize(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
@@ -253,58 +197,62 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
   conversationId,
   locale = 'tr',
 }) {
-  if (!callbackUrl) {
-    throw new Error('callbackUrl gerekli');
-  }
+  if (!callbackUrl) throw new Error('callbackUrl gerekli');
   if (!customerReferenceCode && !subscriptionReferenceCode) {
     throw new Error('customerReferenceCode veya subscriptionReferenceCode gerekli');
   }
 
-  const body = {
+  const request = {
     locale,
     conversationId: conversationId || `sub_card_update_${Date.now()}`,
     callbackUrl,
+    ...(customerReferenceCode ? { customerReferenceCode } : {}),
+    ...(subscriptionReferenceCode ? { subscriptionReferenceCode } : {}),
   };
 
-  if (customerReferenceCode) {
-    body.customerReferenceCode = customerReferenceCode;
-  }
-
-  if (subscriptionReferenceCode) {
-    body.subscriptionReferenceCode = subscriptionReferenceCode;
-  }
-
-  return await iyzicoRequest('/v2/subscription/card-update/checkoutform/initialize', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionCardUpdateCheckoutForm.initialize(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Subscription API: checkout sonucu al
- * GET /v2/subscription/checkoutform/{token}
- * 
- * DUZELTME: Token URL path'ine gidiyor, body bos olmali (GET request).
- * Imza hesabi da GET icin bos body ile yapiliyor.
  */
-export async function retrieveSubscriptionCheckoutForm(token, conversationId) {
-  const queryParams = new URLSearchParams({ locale: 'tr' });
-  if (conversationId) queryParams.set('conversationId', conversationId);
-  const path = `/v2/subscription/checkoutform/${token}?${queryParams.toString()}`;
+export async function retrieveSubscriptionCheckoutForm(token, conversationId?) {
+  const request = {
+    locale: 'tr',
+    token,
+    ...(conversationId ? { conversationId } : {}),
+  };
 
-  // GET request - body bos, imza bos string ile hesaplaniyor
-  return await iyzicoRequest(path, {}, 'GET');
+  return new Promise((resolve, reject) => {
+    iyzipay.subscriptionCheckoutForm.retrieve(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Subscription API: aboneligi iptal et
  */
 export async function cancelIyzicoSubscription({ subscriptionReferenceCode, reason, locale = 'tr', conversationId }) {
-  const body = {
+  const request = {
     locale,
     conversationId: conversationId || `sub_cancel_${Date.now()}`,
+    subscriptionReferenceCode,
+    ...(reason ? { cancellationReason: reason } : {}),
   };
 
-  if (reason) body.cancellationReason = reason;
-
-  return await iyzicoRequest(`/v2/subscription/subscriptions/${subscriptionReferenceCode}/cancel`, body);
+  return new Promise((resolve, reject) => {
+    iyzipay.subscription.cancel(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
@@ -322,7 +270,7 @@ export async function createPaymentWithSavedCard({
   billingAddress,
   basketItems,
 }) {
-  const body = {
+  const request = {
     locale: 'tr',
     conversationId,
     price: price.toString(),
@@ -331,36 +279,38 @@ export async function createPaymentWithSavedCard({
     installment: '1',
     paymentChannel: 'WEB',
     paymentGroup: 'SUBSCRIPTION',
-    paymentCard: {
-      cardUserKey,
-      cardToken,
-    },
+    paymentCard: { cardUserKey, cardToken },
     buyer,
     shippingAddress,
     billingAddress,
     basketItems,
   };
 
-  return await iyzicoRequest('/payment/auth', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.payment.create(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Kayitli kartlari listele
  */
 export async function retrieveCards(cardUserKey) {
-  const body = {
-    locale: 'tr',
-    cardUserKey,
-  };
-
-  return await iyzicoRequest('/cardstorage/cards', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.cardList.retrieve({ locale: 'tr', cardUserKey }, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
 
 /**
  * Odeme iadesi yap (refund)
  */
 export async function refundPayment({ paymentTransactionId, price, currency = 'TRY', conversationId }) {
-  const body = {
+  const request = {
     locale: 'tr',
     conversationId: conversationId || `refund_${Date.now()}`,
     paymentTransactionId,
@@ -368,5 +318,10 @@ export async function refundPayment({ paymentTransactionId, price, currency = 'T
     currency,
   };
 
-  return await iyzicoRequest('/payment/refund', body);
+  return new Promise((resolve, reject) => {
+    iyzipay.refund.create(request, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
 }
