@@ -5,9 +5,48 @@ import crypto from 'crypto';
  * Vercel serverless'ta sorunsuz calisir
  */
 
-const API_KEY = String(process.env.IYZICO_API_KEY || '').trim();
-const SECRET_KEY = String(process.env.IYZICO_SECRET_KEY || '').trim();
-const BASE_URL = String(process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim().replace(/\/$/, '');
+function cleanEnv(value) {
+  const normalized = String(value || '').trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    return normalized.slice(1, -1).trim();
+  }
+  return normalized;
+}
+
+function normalizeBaseUrl(value) {
+  return cleanEnv(value).replace(/\/$/, '');
+}
+
+const API_KEY = cleanEnv(process.env.IYZICO_API_KEY);
+const SECRET_KEY = cleanEnv(process.env.IYZICO_SECRET_KEY);
+const CONFIGURED_BASE_URL = normalizeBaseUrl(process.env.IYZICO_BASE_URL);
+const DEFAULT_BASE_URL = 'https://api.iyzipay.com';
+const SANDBOX_BASE_URL = 'https://sandbox-api.iyzipay.com';
+
+function getBaseUrlCandidates() {
+  const candidates = [];
+  const add = (url) => {
+    if (!url) return;
+    if (!candidates.includes(url)) candidates.push(url);
+  };
+
+  add(CONFIGURED_BASE_URL);
+
+  const looksSandboxCredential =
+    API_KEY.toLowerCase().includes('sandbox') || SECRET_KEY.toLowerCase().includes('sandbox');
+
+  if (!CONFIGURED_BASE_URL) {
+    add(looksSandboxCredential ? SANDBOX_BASE_URL : DEFAULT_BASE_URL);
+  }
+
+  add(SANDBOX_BASE_URL);
+  add(DEFAULT_BASE_URL);
+
+  return candidates;
+}
 
 function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
@@ -60,8 +99,9 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
   const isV2 = path.startsWith('/v2/');
+  const baseUrlCandidates = getBaseUrlCandidates();
 
-  async function sendRequest(forceIyzwsForV2 = false) {
+  async function sendRequest({ forceIyzwsForV2 = false, baseUrl }) {
     const { authorization, useRnd } = getAuthorizationHeader(
       path,
       payload,
@@ -82,15 +122,16 @@ async function iyzicoRequest(path, body, method = 'POST') {
     }
 
     console.info('[iyzico] REQUEST', {
-      url: BASE_URL + path,
+      url: baseUrl + path,
       method,
       authType: isV2 ? (forceIyzwsForV2 ? 'IYZWSv2 (fallback)' : 'Basic') : 'IYZWSv2',
       apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
       secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
       bodyKeys: Object.keys(payload),
+      usingConfiguredBaseUrl: Boolean(CONFIGURED_BASE_URL),
     });
 
-    const response = await fetch(BASE_URL + path, {
+    const response = await fetch(baseUrl + path, {
       method,
       headers,
       ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
@@ -98,7 +139,7 @@ async function iyzicoRequest(path, body, method = 'POST') {
 
     const raw = await response.text();
     console.info('[iyzico] RESPONSE', {
-      url: BASE_URL + path,
+      url: baseUrl + path,
       httpStatus: response.status,
       rawBody: raw.slice(0, 600),
     });
@@ -119,7 +160,7 @@ async function iyzicoRequest(path, body, method = 'POST') {
     }
   }
 
-  const initial = await sendRequest(false);
+  const initial = await sendRequest({ forceIyzwsForV2: false, baseUrl: baseUrlCandidates[0] || DEFAULT_BASE_URL });
 
   const authFailedWithBasic =
     isV2 &&
@@ -127,9 +168,38 @@ async function iyzicoRequest(path, body, method = 'POST') {
     String(initial.parsed?.errorMessage || '').toLowerCase().includes('authentication failed');
 
   if (authFailedWithBasic) {
-    console.warn('[iyzico] Basic auth failed on /v2 endpoint, retrying with IYZWSv2 fallback');
-    const fallback = await sendRequest(true);
-    return fallback.parsed;
+    console.warn('[iyzico] Basic auth failed on /v2 endpoint, retrying with fallback strategies');
+
+    const fallbackAttempts = [];
+
+    // 1) Same auth, alternate environment URL (prod/sandbox mismatch guard)
+    if (baseUrlCandidates[1]) {
+      fallbackAttempts.push({ forceIyzwsForV2: false, baseUrl: baseUrlCandidates[1] });
+    }
+
+    // 2) IYZWSv2 fallback on configured/primary URL
+    fallbackAttempts.push({ forceIyzwsForV2: true, baseUrl: baseUrlCandidates[0] || DEFAULT_BASE_URL });
+
+    // 3) IYZWSv2 fallback on alternate URL
+    if (baseUrlCandidates[1]) {
+      fallbackAttempts.push({ forceIyzwsForV2: true, baseUrl: baseUrlCandidates[1] });
+    }
+
+    let last = initial;
+    for (const attempt of fallbackAttempts) {
+      const result = await sendRequest(attempt);
+      last = result;
+
+      const stillAuthFailed =
+        result.response.status === 401 &&
+        String(result.parsed?.errorMessage || '').toLowerCase().includes('authentication failed');
+
+      if (!stillAuthFailed) {
+        return result.parsed;
+      }
+    }
+
+    return last.parsed;
   }
 
   return initial.parsed;
