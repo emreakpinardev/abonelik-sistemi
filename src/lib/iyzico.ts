@@ -34,50 +34,32 @@ function generateAuthorizationHeader(uri, body, randomString) {
 }
 
 /**
- * iyzico /v2/subscription/ endpoint'leri Basic Auth bekler.
- * Diger endpoint'ler IYZWSv2 bekler.
+ * Tum iyzico endpoint'leri IYZWSv2 auth kullanir.
+ * imza = HMAC-SHA256(secretKey, apiKey + randomKey + uri + bodyString)
  */
-function getAuthorizationHeader(path, body, method, randomString) {
-  const isSubscriptionV2 = path.startsWith('/v2/');
-
-  if (isSubscriptionV2) {
-    // Basic Auth: base64(apiKey:secretKey)
-    const credentials = Buffer.from(`${API_KEY}:${SECRET_KEY}`).toString('base64');
-    return { authorization: `Basic ${credentials}`, useRnd: false };
-  }
-
-  // IYZWSv2 auth (standart odeme endpointleri)
-  const pathForSignature = path.split('?')[0];
-  const authorization = generateAuthorizationHeader(
-    pathForSignature,
-    method === 'GET' ? {} : (body || {}),
-    randomString
-  );
-  return { authorization, useRnd: true };
-}
-
 async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
-  const isV2 = path.startsWith('/v2/');
 
-  const { authorization, useRnd } = getAuthorizationHeader(path, payload, method, randomString);
+  const pathForSignature = path.split('?')[0];
+  const authorization = generateAuthorizationHeader(
+    pathForSignature,
+    method === 'GET' ? {} : payload,
+    randomString
+  );
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
     Authorization: authorization,
+    'x-iyzi-rnd': randomString,
+    'x-iyzi-client-version': 'iyzipay-node-2.0.65',
   };
-
-  if (useRnd) {
-    headers['x-iyzi-rnd'] = randomString;
-    headers['x-iyzi-client-version'] = 'iyzipay-node-2.0.65';
-  }
 
   console.info('[iyzico] REQUEST', {
     url: BASE_URL + path,
     method,
-    authType: isV2 ? 'Basic' : 'IYZWSv2',
+    authType: 'IYZWSv2',
     apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
     secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
     bodyKeys: Object.keys(payload),
