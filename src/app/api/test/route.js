@@ -3,9 +3,9 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
-const API_KEY = process.env.IYZICO_API_KEY;
-const SECRET_KEY = process.env.IYZICO_SECRET_KEY;
-const BASE_URL = process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com';
+const API_KEY = (process.env.IYZICO_API_KEY || '').trim();
+const SECRET_KEY = (process.env.IYZICO_SECRET_KEY || '').trim();
+const BASE_URL = (process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim();
 
 function generateRandomString() {
     return Date.now().toString() + Math.random().toString(36).slice(2, 10);
@@ -13,7 +13,6 @@ function generateRandomString() {
 
 function generateAuthorizationHeader(uri, body, randomString) {
     const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
-    // IYZWSv2: HMAC-SHA256(secretKey, apiKey + randomKey + uri + bodyString)
     const signature = crypto
         .createHmac('sha256', SECRET_KEY)
         .update(API_KEY + randomString + uri + bodyString)
@@ -26,95 +25,80 @@ function generateAuthorizationHeader(uri, body, randomString) {
     return 'IYZWSv2 ' + Buffer.from(authorizationParams.join('&')).toString('base64');
 }
 
-export async function GET() {
-    const path = '/payment/iyzipos/checkoutform/initialize/auth/ecom';
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-    const body = {
-        locale: 'tr',
-        conversationId: 'test-' + Date.now(),
-        price: '100.0',
-        paidPrice: '100.0',
-        currency: 'TRY',
-        basketId: 'test-basket-' + Date.now(),
-        paymentGroup: 'PRODUCT',
-        callbackUrl: appUrl + '/api/iyzico/callback?type=single',
-        enabledInstallments: [1],
-        buyer: {
-            id: 'BY789',
-            name: 'Test',
-            surname: 'Kullanici',
-            gsmNumber: '+905350000000',
-            email: 'test@test.com',
-            identityNumber: '74300864791',
-            lastLoginDate: '2026-01-01 00:00:00',
-            registrationDate: '2026-01-01 00:00:00',
-            registrationAddress: 'Test Adres, Istanbul',
-            ip: '85.34.78.112',
-            city: 'Istanbul',
-            country: 'Turkey',
-            zipCode: '34000',
-        },
-        shippingAddress: {
-            contactName: 'Test Kullanici',
-            city: 'Istanbul',
-            country: 'Turkey',
-            address: 'Test Adres, Istanbul',
-            zipCode: '34000',
-        },
-        billingAddress: {
-            contactName: 'Test Kullanici',
-            city: 'Istanbul',
-            country: 'Turkey',
-            address: 'Test Adres, Istanbul',
-            zipCode: '34000',
-        },
-        basketItems: [
-            {
-                id: 'BI101',
-                name: 'Test Urun',
-                category1: 'Urun',
-                itemType: 'VIRTUAL',
-                price: '100.0',
-            },
-        ],
-    };
-
+async function iyzicoCall(path, body, method = 'POST') {
     const randomString = generateRandomString();
-    const authorization = generateAuthorizationHeader(path, body, randomString);
+    const pathForSig = path.split('?')[0];
+    const authorization = generateAuthorizationHeader(pathForSig, body || {}, randomString);
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authorization,
+        'x-iyzi-rnd': randomString,
+        'x-iyzi-client-version': 'iyzipay-node-2.0.65',
+    };
+    const res = await fetch(BASE_URL + path, {
+        method,
+        headers,
+        ...(method !== 'GET' && body ? { body: JSON.stringify(body) } : {}),
+    });
+    const raw = await res.text();
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+    return { httpStatus: res.status, parsed };
+}
 
-    let iyzicoResponse = null;
-    let iyzicoError = null;
-    let httpStatus = null;
+export async function GET() {
+    const results = {};
+
+    // Test 1: Normal odeme API - iyzico baglantisi var mi?
     try {
-        const response = await fetch(BASE_URL + path, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': authorization,
-                'x-iyzi-rnd': randomString,
-                'x-iyzi-client-version': 'iyzipay-node-2.0.65',
-            },
-            body: JSON.stringify(body),
-        });
-        httpStatus = response.status;
-        const raw = await response.text();
-        try { iyzicoResponse = JSON.parse(raw); } catch { iyzicoResponse = raw; }
-    } catch (err) {
-        iyzicoError = err.message;
+        const paymentBody = {
+            locale: 'tr',
+            conversationId: 'test-' + Date.now(),
+            price: '1.0',
+            paidPrice: '1.0',
+            currency: 'TRY',
+            basketId: 'test-basket',
+            paymentGroup: 'PRODUCT',
+            callbackUrl: 'https://example.com/callback',
+            enabledInstallments: [1],
+            buyer: { id: 'B1', name: 'Test', surname: 'User', gsmNumber: '+905350000000', email: 'test@test.com', identityNumber: '74300864791', lastLoginDate: '2026-01-01 00:00:00', registrationDate: '2026-01-01 00:00:00', registrationAddress: 'Istanbul', ip: '85.34.78.112', city: 'Istanbul', country: 'Turkey', zipCode: '34000' },
+            shippingAddress: { contactName: 'Test User', city: 'Istanbul', country: 'Turkey', address: 'Istanbul', zipCode: '34000' },
+            billingAddress: { contactName: 'Test User', city: 'Istanbul', country: 'Turkey', address: 'Istanbul', zipCode: '34000' },
+            basketItems: [{ id: 'BI1', name: 'Test', category1: 'Test', itemType: 'VIRTUAL', price: '1.0' }],
+        };
+        results.payment_api = await iyzicoCall('/payment/iyzipos/checkoutform/initialize/auth/ecom', paymentBody);
+    } catch (e) {
+        results.payment_api = { error: e.message };
+    }
+
+    // Test 2: Subscription API - urun listele (GET)
+    try {
+        results.subscription_products_list = await iyzicoCall('/v2/subscription/products?page=0&count=1', {}, 'GET');
+    } catch (e) {
+        results.subscription_products_list = { error: e.message };
+    }
+
+    // Test 3: Subscription API - urun olustur (POST)
+    try {
+        const subBody = {
+            locale: 'tr',
+            conversationId: 'test-sub-' + Date.now(),
+            name: 'Test Abonelik Urunu',
+            description: 'Test',
+        };
+        results.subscription_create_product = await iyzicoCall('/v2/subscription/products', subBody);
+    } catch (e) {
+        results.subscription_create_product = { error: e.message };
     }
 
     return NextResponse.json({
-        iyzicoResponse,
-        iyzicoError,
-        httpStatus,
         config: {
             baseUrl: BASE_URL,
-            apiKeyPresent: !!API_KEY,
-            apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
-            secretKeyPresent: !!SECRET_KEY,
-            secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
+            apiKeyLength: API_KEY.length,
+            secretKeyLength: SECRET_KEY.length,
+            apiKeyPrefix: API_KEY.slice(0, 8) + '...',
         },
+        results,
     });
 }
