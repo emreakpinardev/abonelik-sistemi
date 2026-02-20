@@ -59,6 +59,7 @@ function getAuthorizationHeader(path, body, method, randomString) {
 async function iyzicoRequest(path, body, method = 'POST') {
   const randomString = generateRandomString();
   const payload = body || {};
+  const isV2 = path.startsWith('/v2/');
 
   const { authorization, useRnd } = getAuthorizationHeader(path, payload, method, randomString);
 
@@ -73,6 +74,15 @@ async function iyzicoRequest(path, body, method = 'POST') {
     headers['x-iyzi-client-version'] = 'iyzipay-node-2.0.65';
   }
 
+  console.info('[iyzico] REQUEST', {
+    url: BASE_URL + path,
+    method,
+    authType: isV2 ? 'Basic' : 'IYZWSv2',
+    apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
+    secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
+    bodyKeys: Object.keys(payload),
+  });
+
   const response = await fetch(BASE_URL + path, {
     method,
     headers,
@@ -80,6 +90,12 @@ async function iyzicoRequest(path, body, method = 'POST') {
   });
 
   const raw = await response.text();
+  console.info('[iyzico] RESPONSE', {
+    url: BASE_URL + path,
+    httpStatus: response.status,
+    rawBody: raw.slice(0, 600),
+  });
+
   try {
     return JSON.parse(raw);
   } catch {
