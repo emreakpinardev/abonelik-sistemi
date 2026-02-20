@@ -14,7 +14,8 @@ function generateRandomString() {
 // Resmi iyzipay SDK utils.js generateHashV2 ile ayni formul:
 // HMAC-SHA256(secretKey, randomString + uri + body)   -- apiKey hash'e DAHIL DEGIL
 function generateAuthorizationHeader(uri, body, randomString) {
-    const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
+    // SDK her zaman JSON.stringify(body) kullanir - bos obje icin '{}' uretir, '' degil!
+    const bodyString = JSON.stringify(body);
     const signature = crypto
         .createHmac('sha256', SECRET_KEY)
         .update(randomString + uri + bodyString)

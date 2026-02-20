@@ -22,7 +22,8 @@ function generateRandomString() {
 function generateAuthorizationHeader(uri: string, body: object, randomString: string): string {
   // Resmi SDK utils.js - generateHashV2:
   // HMAC-SHA256(secretKey, randomString + uri + JSON.stringify(body))
-  const bodyString = body && Object.keys(body).length > 0 ? JSON.stringify(body) : '';
+  // NOT: SDK her zaman JSON.stringify(body) cagiriyor - bos obje icin '{}' uretir, '' degil!
+  const bodyString = JSON.stringify(body);
 
   const signature = crypto
     .createHmac('sha256', SECRET_KEY)
@@ -43,9 +44,10 @@ async function iyzicoRequest(path: string, body: object, method = 'POST'): Promi
   const payload = body || {};
   const pathForSignature = path.split('?')[0];
 
+  // SDK'da GET isteklerinde de body {} olarak imzalanir (JSON.stringify({}) = '{}')
   const authorization = generateAuthorizationHeader(
     pathForSignature,
-    method === 'GET' ? {} : payload,
+    payload,
     randomString
   );
 
@@ -61,7 +63,7 @@ async function iyzicoRequest(path: string, body: object, method = 'POST'): Promi
     url: BASE_URL + path,
     method,
     authType: 'IYZWSv2',
-    formula: 'HMAC-SHA256(secretKey, randomString + uri + body)',
+    formula: 'HMAC-SHA256(secretKey, randomString + uri + JSON.stringify(body))',
     apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
     bodyKeys: Object.keys(payload),
   });
@@ -262,11 +264,13 @@ export async function initializeSubscriptionCardUpdateCheckoutForm({
  * Not: imza path'i token dahil tam yol ile hesaplaniyor, body bos.
  */
 export async function retrieveSubscriptionCheckoutForm(token: string, conversationId?: string) {
+  // iyzico V2 subscription checkoutform retrieve:
+  // Dokumantasyon: GET /v2/subscription/checkoutform/{token}
+  // Imza: randomString + '/v2/subscription/checkoutform/{token}' + JSON.stringify({}) = '{}'
   const queryParams = new URLSearchParams({ locale: 'tr' });
   if (conversationId) queryParams.set('conversationId', conversationId);
   const path = `/v2/subscription/checkoutform/${token}?${queryParams.toString()}`;
 
-  // GET icin body bos, imza: randomString + path_without_query + ''
   return await iyzicoRequest(path, {}, 'GET');
 }
 
