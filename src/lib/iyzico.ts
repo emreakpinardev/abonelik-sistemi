@@ -5,9 +5,9 @@ import crypto from 'crypto';
  * Vercel serverless'ta sorunsuz calisir
  */
 
-const API_KEY = process.env.IYZICO_API_KEY;
-const SECRET_KEY = process.env.IYZICO_SECRET_KEY;
-const BASE_URL = process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com';
+const API_KEY = String(process.env.IYZICO_API_KEY || '').trim();
+const SECRET_KEY = String(process.env.IYZICO_SECRET_KEY || '').trim();
+const BASE_URL = String(process.env.IYZICO_BASE_URL || 'https://api.iyzipay.com').trim().replace(/\/$/, '');
 
 function generateRandomString() {
   return Date.now().toString() + Math.random().toString(36).slice(2, 10);
@@ -37,10 +37,10 @@ function generateAuthorizationHeader(uri, body, randomString) {
  * iyzico /v2/subscription/ endpoint'leri Basic Auth bekler.
  * Diger endpoint'ler IYZWSv2 bekler.
  */
-function getAuthorizationHeader(path, body, method, randomString) {
+function getAuthorizationHeader(path, body, method, randomString, forceIyzwsForV2 = false) {
   const isSubscriptionV2 = path.startsWith('/v2/');
 
-  if (isSubscriptionV2) {
+  if (isSubscriptionV2 && !forceIyzwsForV2) {
     // Basic Auth: base64(apiKey:secretKey)
     const credentials = Buffer.from(`${API_KEY}:${SECRET_KEY}`).toString('base64');
     return { authorization: `Basic ${credentials}`, useRnd: false };
@@ -61,51 +61,78 @@ async function iyzicoRequest(path, body, method = 'POST') {
   const payload = body || {};
   const isV2 = path.startsWith('/v2/');
 
-  const { authorization, useRnd } = getAuthorizationHeader(path, payload, method, randomString);
+  async function sendRequest(forceIyzwsForV2 = false) {
+    const { authorization, useRnd } = getAuthorizationHeader(
+      path,
+      payload,
+      method,
+      randomString,
+      forceIyzwsForV2
+    );
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    Authorization: authorization,
-  };
-
-  if (useRnd) {
-    headers['x-iyzi-rnd'] = randomString;
-    headers['x-iyzi-client-version'] = 'iyzipay-node-2.0.65';
-  }
-
-  console.info('[iyzico] REQUEST', {
-    url: BASE_URL + path,
-    method,
-    authType: isV2 ? 'Basic' : 'IYZWSv2',
-    apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
-    secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
-    bodyKeys: Object.keys(payload),
-  });
-
-  const response = await fetch(BASE_URL + path, {
-    method,
-    headers,
-    ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
-  });
-
-  const raw = await response.text();
-  console.info('[iyzico] RESPONSE', {
-    url: BASE_URL + path,
-    httpStatus: response.status,
-    rawBody: raw.slice(0, 600),
-  });
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {
-      status: 'failure',
-      errorCode: String(response.status || ''),
-      errorMessage: 'Non-JSON response from iyzico',
-      rawResponseSnippet: raw.slice(0, 500),
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: authorization,
     };
+
+    if (useRnd) {
+      headers['x-iyzi-rnd'] = randomString;
+      headers['x-iyzi-client-version'] = 'iyzipay-node-2.0.65';
+    }
+
+    console.info('[iyzico] REQUEST', {
+      url: BASE_URL + path,
+      method,
+      authType: isV2 ? (forceIyzwsForV2 ? 'IYZWSv2 (fallback)' : 'Basic') : 'IYZWSv2',
+      apiKeyPrefix: API_KEY ? API_KEY.slice(0, 8) + '...' : 'EKSIK',
+      secretKeyPrefix: SECRET_KEY ? SECRET_KEY.slice(0, 8) + '...' : 'EKSIK',
+      bodyKeys: Object.keys(payload),
+    });
+
+    const response = await fetch(BASE_URL + path, {
+      method,
+      headers,
+      ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
+    });
+
+    const raw = await response.text();
+    console.info('[iyzico] RESPONSE', {
+      url: BASE_URL + path,
+      httpStatus: response.status,
+      rawBody: raw.slice(0, 600),
+    });
+
+    try {
+      return { response, parsed: JSON.parse(raw), raw };
+    } catch {
+      return {
+        response,
+        parsed: {
+          status: 'failure',
+          errorCode: String(response.status || ''),
+          errorMessage: 'Non-JSON response from iyzico',
+          rawResponseSnippet: raw.slice(0, 500),
+        },
+        raw,
+      };
+    }
   }
+
+  const initial = await sendRequest(false);
+
+  const authFailedWithBasic =
+    isV2 &&
+    initial.response.status === 401 &&
+    String(initial.parsed?.errorMessage || '').toLowerCase().includes('authentication failed');
+
+  if (authFailedWithBasic) {
+    console.warn('[iyzico] Basic auth failed on /v2 endpoint, retrying with IYZWSv2 fallback');
+    const fallback = await sendRequest(true);
+    return fallback.parsed;
+  }
+
+  return initial.parsed;
 }
 
 function formatPriceForIyzico(price) {
